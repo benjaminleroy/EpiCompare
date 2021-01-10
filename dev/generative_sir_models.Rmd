@@ -1,0 +1,887 @@
+---
+title: "Epidemic Simulation: Oracle Version"
+output: html_document
+---
+
+```{r}
+rerun <- T
+```
+
+
+We're going to define a generated for an epidemic (we can pretend it's COVID.)
+
+Specifically suppose that, for a "advanced economy index" which is between 0 and 1, we imagine that this variable directly relates to the epidemic's $R_0$ (which relates to the number of individuals that the average person would infect when no-one is immune). Specifically, as your "advanced economy index" increases the population is more mobil and so the disease spreads more widely (higher $R_0$). But if you population is advanced enough ("advanced economy index" > .25), then there is also the possibility that your "advancement" might actually help you reduce the $R_0$ (e.g. listening to scientists, etc.).
+
+We can describe the generative distribution as 
+$$
+X \sim Unif(0, 1) \\
+(Z|X=x) \sim .5 N(f(x)-g(x), \sigma^2(x)) + .5 N(f(x)+g(x),\sigma^2(x)) \\
+(R_0 |Z=z) = 1/7 \cdot z+2\\
+\\
+f|R_0 \sim SIR(\beta = .1,\gamma = .1/R_0)
+$$
+
+where
+
+1. $f(x) = (x-1)^2(x+1)$,
+2. $g(x) = 2\sqrt{x+.5} \cdot \mathbb{I}(x\geq q -.5)$ and 
+3. $\sigma(x) = 1/4 + |x|$.
+
+In the gif below we demonstrate some and simulations with the associated $R_0$ 
+
+```{r message = F, warning = F, echo = F}
+library(tidyverse)
+library(devtools)
+library(ggrepel)
+library(gridExtra)
+
+load_all("../../simulationBands/")
+load_all("../")
+
+set.seed(1)
+df <- tibble(x = runif(1000))
+df$R0 <- sapply(df$x, function(x){
+                1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5), n =1)[[1]]$sim}+2)
+df$highlight <- rep(0, 1000)
+df$highlight[c(389, 568, 1000,200)] <- 1
+
+# df %>%
+#   ggplot() +
+#   geom_point(aes(x = x, y = R0))
+```
+
+```{r message = F, warning = F, echo = F}
+vis_list <- list()
+
+for (index in which(df$highlight == 1)){
+  R0_inner <- df$R0[index]
+  beta <- .1
+  gamma <- .1/R0_inner
+  sir_sim <- simulate_SIR_agents(n_sims = 100, n_time_steps = 500, 
+                                 beta, gamma, init_SIR = c(950,50,0)) %>%
+    group_by(sim) %>% 
+    agents_to_aggregate(states = c("tI", "tR")) %>%
+    rename(S = "X0", I = "X1", R = "X2")
+  
+  df_inner <- df %>%
+    mutate(highlight2 = 0) 
+  df_inner$highlight2[index] <- 1
+  
+  vis1 <- ggplot() +
+    geom_point(data = df_inner %>% filter(highlight2 == 0),
+               aes(x = x, y = R0), color = "black", alpha = .2) +
+    geom_hline(yintercept = df_inner$R0[df_inner$highlight2 == 1],
+               color = "red") +
+    geom_point(data = df_inner %>% filter(highlight2 == 1),
+               aes(x = x, y = R0), color = "red") +
+    geom_label_repel(data = df_inner %>% filter(highlight2 == 1),
+               aes(x = x, y = R0, label = index), 
+               nudge_x = -.1, nudge_y = .1,
+               color = "red") +
+    theme_bw() +
+    theme(aspect.ratio = 1)
+  
+  vis2 <- sir_sim %>%
+    ggplot() +
+    geom_line(aes(x = S, y = I, z = R, group = sim),
+              alpha = .1) +
+    coord_tern() +
+    theme_sir() +
+    labs(title = sprintf("100 simulations with R0 = %.4f",
+                         df_inner$R0[df_inner$highlight2 == 1]))
+  
+  vis_list[[as.character(index)]] <- arrangeGrob(grobs = list(vis1, vis2), 
+                                                 nrow = 1) 
+}
+```
+
+```{r sir-fig, fig.show='animate', ffmpeg.format='gif', dev='jpeg', interval = 1, echo = F}
+walk(vis_list, plot)
+```
+
+
+# Oracle Fit
+
+We can imagine having a set of observations from this distribution and a blackbox model that perfectly captures the generative process. 
+
+```{r eval = F}
+calibration_set_r0 <- tibble(x = runif(300))
+calibration_set_r0$R0 <- sapply(calibration_set_r0$x, function(x){
+                1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5),
+                                                                             n =1)[[1]]$sim+2})
+calibration_set_r0 <- calibration_set_r0 %>%
+  mutate(beta = 1,
+         gamma = 1/R0,
+         idx = 1:300)
+
+calibration_paths <- calibration_set_r0 %>% group_by(idx, beta, gamma) %>%
+  nest() %>%
+  mutate(sim = purrr::pmap(list(beta, gamma),
+                           function(b,g){simulate_SIR_agents(n_sims = 1, 
+                                                             n_time_steps = 500, 
+                                                             b, g, 
+                                                             init_SIR = c(950,50,0)) %>%
+                               agents_to_aggregate(states = c("tI", "tR"))})) %>%
+  select(-data) %>%
+  unnest(sim) %>% 
+  rename(S = "X0", I = "X1", R = "X2")
+```
+
+
+#### Functions
+
+```{r}
+get_delta <- function(dist_mat){
+  # similar to TCpredictionband function
+  diag(dist_mat) <- max(dist_mat)
+  mm_delta <- apply(dist_mat, MARGIN = 1, min) %>% max
+  return(mm_delta)
+}
+
+maxmin_inner <- function(df_row, df_col){
+  p <- dim(df_row)[2]
+  
+  assertthat::assert_that(assertthat::are_equal(p, dim(df_col)[2]),
+                          msg = "DFs have different dimension (p)")
+
+  maxmin <- -Inf
+  for (i_idx in 1:nrow(df_row)){
+    min_inner <- Inf
+    for (j_idx in 1:nrow(df_col)){
+      min_inner <- min(c(stats::dist(rbind(df_row[i_idx,], df_col[j_idx,])),
+                         min_inner))
+    }
+    maxmin <- max(c(min_inner, maxmin))
+  }
+  
+  return(maxmin)
+}
+
+library(RANN)
+
+maxmin_inner2 <- function(df_row, df_col, only_val = T){
+  p <- dim(df_row)[2]
+  
+  assertthat::assert_that(assertthat::are_equal(p, dim(df_col)[2]),
+                          msg = "DFs have different dimension (p)")
+  
+  nn_info <- RANN::nn2(data = df_col, query = df_row, k = 1, treetype = "kd")
+  if (only_val){
+    return(max(nn_info$nn.dists))
+  } else {
+    return(list(max(nn_info$nn.dists), nn_info$nn.dists))
+  }
+  
+}
+
+maxmin_distance_vector <- function(truth_df, simulations_grouped_df,
+                                  data_column_names = c("S", "I", "R")){
+  
+  
+  mm_df <- simulations_grouped_df %>% 
+    nest() %>% 
+    mutate(maxmin_dist = purrr::map(data, function(df){
+      maxmin_inner(df_row = truth_df[data_column_names],
+                   df_col = df[data_column_names])
+    })) %>% 
+    select(-data) %>%
+    unnest(maxmin_dist)
+  
+  return(mm_df)
+}
+
+maxmin_distance_vector2 <- function(truth_df, simulations_grouped_df,
+                                  data_column_names = c("S", "I", "R"),
+                                  .all_info = F){
+  
+  if(!.all_info){
+  mm_df <- simulations_grouped_df %>% 
+    nest() %>% 
+    mutate(maxmin_dist = purrr::map(data, function(df){
+      maxmin_inner2(df_row = truth_df[data_column_names],
+                   df_col = df[data_column_names])
+    })) %>% 
+    select(-data) %>%
+    unnest(maxmin_dist)
+  } else {
+    all_info_list <- simulations_grouped_df %>% group_split()
+    all_info_names <- simulations_grouped_df %>% group_keys()
+    
+    dist_info_list <- lapply(all_info_list, function(df) {
+      maxmin_inner2(df_row = truth_df[data_column_names],
+                    df_col = df[data_column_names],only_val = F)[[2]]})
+    
+    
+    dist_info_matrix <- t(do.call(cbind, dist_info_list))
+    dist_info_df <- cbind(all_info_names,
+                          data.frame(dist_info_matrix))
+    
+    browser()
+    mm_df <- cbind(all_info_names, maxmin_dist = apply(dist_info_matrix,1, max))
+    return(list(mm_df, dist_info_df))
+  }
+}
+
+
+
+simulation_based_conformal <- function(truth_df, simulations_grouped_df,
+                                       data_column_names = c("S", "I", "R"),
+                                       number_points = 100,
+                                       .to_simplex = TRUE){
+  
+  if (number_points == Inf){
+    .do_filament_compression <- FALSE
+  } else {
+    .do_filament_compression <- TRUE
+  }
+
+  assertthat::assert_that(inherits(simulations_grouped_df, "grouped_df"))
+  group_names <- names(group_keys(simulations_grouped_df))
+  
+  truth_df_inner <- truth_df[data_column_names] 
+  
+  for (col_name in group_names){
+    truth_df_inner[col_name] <- "truth"
+  }
+  truth_df_inner <- truth_df_inner[c(group_names, data_column_names)]
+  
+  simulations_group_df_inner <- simulations_grouped_df[c(group_names, 
+                                                         data_column_names)]
+  if (.to_simplex){
+    truth_df_inner <- truth_df_inner %>% as.data.frame() %>%
+      get_xy_coord(xyz_col = data_column_names)
+    simulations_group_df_inner <- simulations_group_df_inner %>% 
+      as.data.frame() %>% get_xy_coord(xyz_col = data_column_names) %>% 
+      group_by_at(vars(one_of(group_names))) 
+    
+    data_column_names <- c("x","y")
+  }
+  
+  
+  truth_df_inner <- truth_df_inner %>% 
+    group_by_at(vars(one_of(group_names))) 
+  
+  simulations_group_df_inner <- simulations_group_df_inner %>%
+    mutate_at(vars(one_of(group_names)), as.character)
+  
+  simulations_group_df_non_group_idx <- which(
+    names(simulations_group_df_inner) %in% data_column_names)
+  
+  if (.do_filament_compression){
+    truth_df_non_group_idx <- which(names(truth_df_inner) %in% data_column_names)
+    
+    truth_df_inner <- truth_df_inner %>%
+      filament_compression(data_columns = truth_df_non_group_idx,
+                       number_points = number_points) 
+
+    simulations_group_df_inner <- simulations_group_df_inner %>%
+      filament_compression(data_columns = simulations_group_df_non_group_idx,
+                           number_points = number_points)
+  }
+  
+  tdm_sims <- dist_matrix_innersq_direction(simulations_group_df_inner, 
+                                       position = simulations_group_df_non_group_idx,
+                                       tdm_out = T)
+  
+  # sigma selection
+  
+  sigma_size <- c("20%" = .2, "25%" = .25, "30%" = .3,
+                  "35%" = .35, "40%" = .4, "45%" = .45)
+  
+  percentage <- names(sigma_size)[stats::quantile(as.matrix(tdm_sims), sigma_size) > 0][1]
+  
+  
+  # rank_df
+  pseudo_density_df <- distance_psuedo_density_function(
+    tdm_sims,
+    sigma = percentage, df_out = T) %>%
+    mutate(ranking = rank(psuedo_density,ties.method = "min")) #spelling error... :(
+  
+  assertthat::assert_that(all(!is.na(pseudo_density_df$psuedo_density)),
+                          msg = paste("internal error in",
+                                      "distance_psuedo_density_function",
+                                      "function's sigma selection."))
+  
+  mm_df <- maxmin_distance_vector2(truth_df = truth_df_inner,
+                                  simulations_grouped_df = simulations_group_df_inner,
+                                  data_column_names = data_column_names)
+  
+  top_points <- top_curves_to_points(simulations_group_df_inner,tidy_dm = tdm_sims, 
+                       alpha = .2, 
+                       quantile_func = distance_psuedo_density_function,
+                       sigma = percentage) # 80% curve remain
+  
+  mm_delta <- get_delta(as.matrix(dist(top_points[data_column_names])))
+  
+  containment_df <- pseudo_density_df %>% 
+    left_join(mm_df, by = group_names) %>%
+    mutate(delta_close = maxmin_dist < mm_delta)
+   
+  
+  conformal_score <- max(c(containment_df$ranking[containment_df$delta_close],
+                           0))
+  
+  return(list(conformal_score = conformal_score, containment_df = containment_df, 
+              mm_delta = mm_delta, 
+              truth_df_inner = truth_df_inner, 
+              simulations_group_df_inner = simulations_group_df_inner,
+              parameters = c("mm_delta_prop" = .2, 
+                             "sigma_percentage" = percentage,
+                             "filament_num_points" = number_points)))
+}
+
+simulation_based_conformal_region <- function(simulations_grouped_df,
+                                       data_column_names = c("S", "I", "R"),
+                                       number_points = 100,
+                                       .to_simplex = TRUE){
+  
+  if (number_points == Inf){
+    .do_filament_compression <- FALSE
+  } else {
+    .do_filament_compression <- TRUE
+  }
+
+  assertthat::assert_that(inherits(simulations_grouped_df, "grouped_df"))
+  group_names <- names(group_keys(simulations_grouped_df))
+  
+  simulations_group_df_inner <- simulations_grouped_df[c(group_names, 
+                                                         data_column_names)]
+  if (.to_simplex){
+    simulations_group_df_inner <- simulations_group_df_inner %>% 
+      as.data.frame() %>% get_xy_coord(xyz_col = data_column_names) %>% 
+      group_by_at(vars(one_of(group_names))) 
+    
+    data_column_names <- c("x","y")
+  }
+  
+  simulations_group_df_inner <- simulations_group_df_inner %>%
+    mutate_at(vars(one_of(group_names)), as.character)
+  
+  simulations_group_df_non_group_idx <- which(
+    names(simulations_group_df_inner) %in% data_column_names)
+  
+  if (.do_filament_compression){
+    simulations_group_df_inner <- simulations_group_df_inner %>%
+      filament_compression(data_columns = simulations_group_df_non_group_idx,
+                           number_points = number_points)
+  }
+  
+  tdm_sims <- dist_matrix_innersq_direction(simulations_group_df_inner, 
+                                       position = simulations_group_df_non_group_idx,
+                                       tdm_out = T)
+  
+  # sigma selection
+  
+  sigma_size <- c("20%" = .2, "25%" = .25, "30%" = .3,
+                  "35%" = .35, "40%" = .4, "45%" = .45)
+  
+  percentage <- names(sigma_size)[stats::quantile(as.matrix(tdm_sims), sigma_size) > 0][1]
+  
+  
+  # rank_df
+  pseudo_density_df <- distance_psuedo_density_function(
+    tdm_sims,
+    sigma = percentage, df_out = T) %>%
+    mutate(ranking = rank(psuedo_density,ties.method = "min")) #spelling error... :(
+  
+  assertthat::assert_that(all(!is.na(pseudo_density_df$psuedo_density)),
+                          msg = paste("internal error in",
+                                      "distance_psuedo_density_function",
+                                      "function's sigma selection."))
+  
+  
+  remove_for_top_prop <- 0
+  top_points <- top_curves_to_points(simulations_group_df_inner,tidy_dm = tdm_sims, 
+                       alpha = remove_for_top_prop, 
+                       quantile_func = distance_psuedo_density_function,
+                       sigma = percentage) # 1-alpha% curve remain
+  
+  mm_delta <- get_delta(as.matrix(dist(top_points[data_column_names])))
+  
+  containment_df <- pseudo_density_df 
+   
+  return(list(conformal_score = NA, containment_df = containment_df, 
+              mm_delta = mm_delta, 
+              truth_df_inner = NA, 
+              simulations_group_df_inner = simulations_group_df_inner,
+              parameters = c("mm_delta_prop" = remove_for_top_prop, 
+                             "sigma_percentage" = percentage,
+                             "filament_num_points" = number_points)))
+}
+
+
+testthat::test_that("test simulation_based_conformal",{
+  curve1 <- data.frame(x = (1:50)/2,
+                       y = (1:50)/2,
+                       id = "1")
+  curve2 <- curve1 %>% 
+    mutate(x = x + sqrt(2)/2,
+           y = y - sqrt(2)/2,
+           id = "2")
+  curve3 <- curve1 %>% 
+    mutate(x = x - sqrt(2)/2,
+           y = y + sqrt(2)/2,
+           id = "3")
+  all_curves <- rbind(curve1, curve2, curve3)
+  
+
+  curve4 <- curve1 %>% mutate(id = "4")
+  curve4$index <- curve4$x > 12.5
+  curve4$x <- curve4$x + sqrt(2) * c(-1,1)[curve4$index+1]
+  curve4$y <- curve4$y + sqrt(2) * c(1,-1)[curve4$index+1]
+  curve4 <- curve4 %>% select(-index)
+  
+  if (FALSE){ # visualizae
+    all_curves <- rbind(curve1, curve2, curve3, curve4)
+    all_curves %>% ggplot() +
+      geom_line(aes(x = x , y =y , color = id))
+  }
+  
+  
+  sim_curves <- rbind(curve1, curve2, curve3) %>%
+    group_by(id)
+  truth_curve <- curve4
+  
+  cs4 <- simulation_based_conformal(truth_df = truth_curve, 
+                                   simulations_grouped_df = sim_curves,
+                                   data_column_names = c("x", "y"),
+                                   number_points = Inf,
+                                   .to_simplex = F)
+  testthat::expect_equal(cs4[[1]], 0)
+  
+  
+  cs1 <- simulation_based_conformal(truth_df = curve1, 
+                                   simulations_grouped_df = sim_curves,
+                                   data_column_names = c("x", "y"),
+                                   number_points = Inf,
+                                   .to_simplex = F)
+  testthat::expect_equal(cs1[[1]], 3)
+  
+  curve3.5 <- curve1 %>% 
+    mutate(x = x - 1.5 * sqrt(2)/2,
+           y = y + 1.5 * sqrt(2)/2,
+           id = "3")
+
+  cs1.5 <- simulation_based_conformal(truth_df = curve3.5, 
+                                   simulations_grouped_df = sim_curves,
+                                   data_column_names = c("x", "y"),
+                                   number_points = Inf,
+                                   .to_simplex = F)
+  testthat::expect_equal(cs1.5[[1]], 1)
+  
+  
+})
+
+
+```
+```{r}
+check_file_exists <- function(file_name,dir = ".", .logic = T){
+  files <- list.files(path = dir)
+  detection <- stringr::str_detect(files, pattern = file_name)
+  if (!.logic){
+  return(files[detection])
+  } else {
+    return(any(detection))
+  }
+  
+}
+```
+
+
+
+```{r}
+file_exists <- check_file_exists("calibration_information.Rdata")
+
+if (!file_exists | rerun){
+  library(parallel)
+  library(foreach)
+  library(doSNOW)
+  max_cores <- parallel::detectCores()
+  cl <- makeCluster(max_cores-4)
+  registerDoSNOW(cl)
+  iterations <- nrow(calibration_set_r0)
+  pb <- txtProgressBar(max = iterations, style = 3)
+  progress <- function(n) setTxtProgressBar(pb, n)
+  opts <- list(progress = progress)
+  
+  n_sims <- 100
+  verbose <- T
+  number_points <- 50
+  
+  calibration_conformal_scores <- foreach(calibration_idx = 1:nrow(calibration_set_r0),
+                                          #.combine = c,
+                                          .options.snow = opts,
+                                          .packages = c("dplyr", "tidyr")) %dopar%{
+    devtools::load_all("../")
+    devtools::load_all("../../simulationBands/")
+    x_inner <- calibration_set_r0$x[calibration_idx]
+    
+    inner_df <- data.frame(x = rep(x_inner, n_sims))
+    inner_df$R0 <- sapply(inner_df$x, function(x){
+                  1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5),
+                                                                               n =1)[[1]]$sim+2})
+    inner_df <- inner_df %>%
+      mutate(beta = .1,
+             gamma = .1/R0,
+             idx = paste0("inner", 1:n_sims))
+  
+   inner_sims <- inner_df %>% group_by(idx, beta, gamma) %>%
+    nest() %>%
+    mutate(sim = purrr::pmap(list(beta, gamma),
+                             function(b,g){simulate_SIR_agents(n_sims = 1, 
+                                                               n_time_steps = 500, 
+                                                               b, g, 
+                                                               init_SIR = c(950,50,0)) %>%
+                                 agents_to_aggregate(states = c("tI", "tR"))})) %>%
+    select(-data) %>%
+    unnest(sim) %>% 
+    rename(S = "X0", I = "X1", R = "X2")
+   
+    conformal_score <- simulation_based_conformal(truth_df = calibration_paths %>%
+                                filter(idx == calibration_idx) %>% ungroup() %>%
+                                select("S","I", "R"), 
+                              simulations_grouped_df = inner_sims,
+                              data_column_names = c("S", "I", "R"),
+                              number_points = number_points,
+                              .to_simplex = T)
+   ggplot_vis <- calibration_paths %>%
+     filter(idx == calibration_idx) %>% ungroup() %>%
+     select("S","I", "R") %>%
+     ggplot() +
+     geom_path(data = inner_sims,
+               aes(x = S, y = I, z = R, group = idx), alpha = .1, color = "black") +
+     geom_path(aes(x = S, y = I, z = R), color = "red") +
+     coord_tern()
+    
+    
+    return(list(conformal_score, ggplot_vis))
+  }
+  
+  conformal_score_vector <- sapply(calibration_conformal_scores, function(x) x[[1]]$conformal_score)
+  mm_delta_vector <- sapply(calibration_conformal_scores, function(x) x[[1]]$mm_delta)
+  ggplot_vis_list <- lapply(calibration_conformal_scores, function(x) x[[2]])
+  
+  save(calibration_conformal_scores, 
+       file = "calibration_information.Rdata")
+  
+  parallel::stopCluster(cl)
+} else {
+  load(file = "calibration_information.Rdata")
+  conformal_score_vector <- sapply(calibration_conformal_scores, function(x) x[[1]]$conformal_score)
+  mm_delta_vector <- sapply(calibration_conformal_scores, function(x) x[[1]]$mm_delta)
+  ggplot_vis_list <- lapply(calibration_conformal_scores, function(x) x[[2]])
+}
+```
+
+
+
+
+TODO: 
+1) generate data, 
+2) calculate conformal scores with delta\_ball approach (where delta\_ball is calculated for the full set of simulated curves)? -reference Shannon and my paper
+3. suggest that containment should actually be made relative to mixtures separately (mention Ciallori, but do it based on knowledge of group...)
+
+$\alpha = .6$
+
+
+```{r}
+df_conformal_calibration_fit_info <- data.frame(
+           idx = 1:300,
+           cs = conformal_score_vector,
+           mm_delta = mm_delta_vector) 
+
+
+df_conformal_calibration_ecdf_info <- data.frame(
+           cs = conformal_score_vector,
+           ecdf = ecdf(conformal_score_vector)(conformal_score_vector))
+
+vis1 <- df_conformal_calibration_fit_info %>%
+  ggplot() +
+  geom_histogram(aes(x = cs)) +
+  labs(x = "simulation conformal score",
+       title = "calibration set")
+
+vis2 <- df_conformal_calibration_ecdf_info %>%
+  ggplot() +
+  geom_line(aes(x = cs, y = ecdf)) +
+  labs(x = "simulation conformal score",
+       y = "empirical cumulative distribution function",
+       title = "calibration set") +
+  ylim(0,1)
+
+vis3 <- df_conformal_calibration_fit_info %>%
+  ggplot() +
+  geom_point(aes(y = cs, x = mm_delta), alpha = .1) +
+  labs(y = "simulation conformal score",
+       x = "delta for delta ball around filament compression points",
+       title = "calibration set")
+
+vis4 <- df_conformal_calibration_fit_info %>%
+  ggplot() +
+  geom_point(aes(x = idx, y = cs)) +
+  xlim(0,20)
+
+vis5 <- df_conformal_calibration_fit_info %>%
+  ggplot() +
+  geom_point(aes(x = idx, y = mm_delta)) +
+  xlim(0,20)
+
+gridExtra::grid.arrange(vis1, vis2,
+                        vis3, vis4, 
+                        vis5,
+                        nrow = 3)
+
+ggvis <- gridExtra::arrangeGrob(vis1, vis2,
+                        vis3, vis4, 
+                        vis5,
+                        nrow = 3)
+ggsave(plot = ggvis, filename = "images/sir_vis_containment_problem.pdf")
+
+
+```
+
+
+```{r fig.height = 10}
+first_plots <- lapply(1:20,
+                      function(idx){ggplot_vis_list[[idx]]+labs(title = sprintf("%s: %s",idx,conformal_score_vector[idx])) +
+                          theme(title = element_text(size = 20))})
+arrangeGrob(grobs = first_plots, nrow = 5) %>% plot()
+```
+
+```{r}
+ggsave(plot = first_plots[[6]], filename = "images/6_sir_vis_containment_problem.pdf")
+ggsave(plot = first_plots[[13]], filename = "images/13_sir_vis_containment_example.pdf")
+
+```
+
+
+Todo: look at 6 (has a score of 0 - would expect higher...) and 19 (has a score of 48 - would expect lower)? 
+
+```{r}
+gvsi <- calibration_conformal_scores[[6]][[2]]
+info <- calibration_conformal_scores[[6]][[1]]
+info$conformal_score
+info$containment_df
+info$mm_delta
+
+info$truth_df_inner %>% ggplot() +
+  geom_point(data = info$simulations_group_df_inner, aes(x = x, y = y)) + 
+  geom_point(aes(x = x, y = y), color = "red") 
+
+
+mm_df <- maxmin_distance_vector(truth_df = info$truth_df_inner,
+                                simulations_grouped_df = info$simulations_group_df_inner,
+                                data_column_names = c("x", "y"))
+
+mm_df2.1 <- maxmin_distance_vector2(truth_df = info$truth_df_inner,
+                                simulations_grouped_df = info$simulations_group_df_inner,
+                                data_column_names = c("x", "y"), .all_info = F)
+
+mm_df2 <- maxmin_distance_vector2(truth_df = info$truth_df_inner,
+                                simulations_grouped_df = info$simulations_group_df_inner,
+                                data_column_names = c("x", "y"), .all_info = T)
+# this probably could be speed up with a kdtree - per simulation? (or make a single kd-tree for the truth? - )
+# testthat::expect_equal(mm_df, mm_df2.1) #passes
+# testthat::expect_equivalent(mm_df %>% arrange(idx), mm_df2[[1]] %>% arrange(idx)) #passes
+
+mm_df2[[2]] %>% select(starts_with("X")) %>% as.matrix() %>% apply(2, min) %>% max
+
+min_vec <- mm_df2[[2]] %>% select(starts_with("X")) %>% as.matrix() %>% apply(2, which.min)
+
+
+info$containment_df %>%
+  right_join(mm_df2[[1]][unique(min_vec),],
+             by = c("beta", "gamma","idx"))
+info$mm_delta
+
+```
+
+
+
+## Apply to at Test set
+
+```{r}
+set_seed(123)
+test_set_r0 <- tibble(x = runif(300))
+test_set_r0$R0 <- sapply(calibration_set_r0$x, function(x){
+                1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5),
+                                                                             n =1)[[1]]$sim+2})
+test_set_r0 <- test_set_r0 %>%
+  mutate(beta = .1,
+         gamma = .1/R0,
+         idx = 1:300,
+         x_cut = cut(x, c(-Inf, .25, .5,.75, Inf))) #[0, .25,.5,.75, Inf]
+
+test_paths <- test_set_r0 %>% group_by(idx, beta, gamma) %>%
+  nest() %>%
+  mutate(sim = purrr::pmap(list(beta, gamma),
+                           function(b,g){simulate_SIR_agents(n_sims = 1, 
+                                                             n_time_steps = 500, 
+                                                             b, g, 
+                                                             init_SIR = c(950,50,0)) %>%
+                               agents_to_aggregate(states = c("tI", "tR"))})) %>%
+  select(-data) %>%
+  unnest(sim) %>% 
+  rename(S = "X0", I = "X1", R = "X2")
+```
+
+```{r}
+library(parallel)
+library(foreach)
+library(doSNOW)
+max_cores <- parallel::detectCores()
+cl <- makeCluster(max_cores-4)
+registerDoSNOW(cl)
+iterations <- nrow(test_set_r0)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+
+n_sims <- 100
+verbose <- T
+number_points <- 50
+test_conformal_scores <- foreach(test_idx = 1:nrow(test_set_r0),
+                                 .options.snow = opts,
+                                 .packages = c("dplyr", "tidyr")) %dopar%{
+  devtools::load_all("../")
+  devtools::load_all("../../simulationBands/")
+  x_inner <- test_set_r0$x[test_idx]
+
+  inner_df <- data.frame(x = rep(x_inner, n_sims))
+  inner_df$R0 <- sapply(inner_df$x, function(x){
+                1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5),
+                                                                             n =1)[[1]]$sim+2})
+  inner_df <- inner_df %>%
+    mutate(beta = .1,
+           gamma = .1/R0,
+           idx = paste0("inner", 1:n_sims))
+
+ inner_sims <- inner_df %>% group_by(idx, beta, gamma) %>%
+  nest() %>%
+  mutate(sim = purrr::pmap(list(beta, gamma),
+                           function(b,g){simulate_SIR_agents(n_sims = 1,
+                                                             n_time_steps = 500,
+                                                             b, g,
+                                                             init_SIR = c(950,50,0)) %>%
+                               agents_to_aggregate(states = c("tI", "tR"))})) %>%
+  select(-data) %>%
+  unnest(sim) %>%
+  rename(S = "X0", I = "X1", R = "X2")
+
+  conformal_score <- simulation_based_conformal_region(
+                            simulations_grouped_df = inner_sims,
+                            data_column_names = c("S", "I", "R"),
+                            number_points = number_points,
+                            .to_simplex = T)
+  
+
+  return(conformal_score)
+}
+
+
+save(calibration_conformal_scores,
+     file = "test_conformal_information.Rdata")
+
+
+parallel::stopCluster(cl)
+```
+
+
+
+
+Showcase that this conformal approach meets expectations.
+
+# Bad fit. 
+
+Now let's assume that we have a bad fit model. Specifically, let's just assume the model predicts 
+
+\[
+R_0 \sim N(2, \sigma = .25)
+\]
+
+But we will use Lei & Wasserman 2014's approach and split $X$ into .25 length increments. 
+
+
+```{r echo = F}
+df %>% mutate(data_type = "Truth") %>%
+  rbind(data.frame(x = runif(1000), 
+                   R0 = rnorm(1000, mean = 2, sd = .25),
+                   highlight = F,
+                   data_type = "Fitted"))
+  ggplot() +
+  geom_point(aes(x = x, y = R0, color = data_type))
+```
+
+```{r}
+library(parallel)
+library(foreach)
+library(doSNOW)
+max_cores <- parallel::detectCores()
+cl <- makeCluster(max_cores-4)
+registerDoSNOW(cl)
+iterations <- nrow(calibration_set_r0)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+
+n_sims <- 100
+verbose <- T
+number_points <- 50
+
+calibration_conformal_scores <- foreach(calibration_idx = 1:nrow(calibration_set_r0),
+                                        .combine = list,
+                                        .options.snow = opts,
+                                        .packages = c("dplyr", "tidyr")) %dopar%{
+  devtools::load_all("../")
+  devtools::load_all("../../simulationBands/")
+  x_inner <- calibration_set_r0$x[calibration_idx]
+  
+  inner_df <- data.frame(x = rep(x_inner, n_sims))
+  inner_df$R0 <- sapply(inner_df$x, function(x){
+                rnorm(1, mean = 2, sd = .25)}) # bad fit
+  
+  inner_df <- inner_df %>%
+    mutate(beta = .1,
+           gamma = .1/R0,
+           idx = paste0("inner", 1:n_sims))
+
+ inner_sims <- inner_df %>% group_by(idx, beta, gamma) %>%
+  nest() %>%
+  mutate(sim = purrr::pmap(list(beta, gamma),
+                           function(b,g){simulate_SIR_agents(n_sims = 1, 
+                                                             n_time_steps = 500, 
+                                                             b, g, 
+                                                             init_SIR = c(950,50,0)) %>%
+                               agents_to_aggregate(states = c("tI", "tR"))})) %>%
+  select(-data) %>%
+  unnest(sim) %>% 
+  rename(S = "X0", I = "X1", R = "X2")
+ 
+  conformal_score <- simulation_based_conformal(truth_df = calibration_paths %>%
+                              filter(idx == calibration_idx) %>% ungroup() %>%
+                              select("S","I", "R"), 
+                            simulations_grouped_df = inner_sims,
+                            data_column_names = c("S", "I", "R"),
+                            number_points = number_points,
+                            .to_simplex = T)
+ ggplot_vis <- calibration_paths %>%
+   filter(idx == calibration_idx) %>% ungroup() %>%
+   select("S","I", "R") %>%
+   ggplot() +
+   geom_path(data = inner_sims,
+             aes(x = S, y = I, z = R, group = idx), alpha = .1, color = "black") +
+   geom_path(aes(x = S, y = I, z = R), color = "red") +
+   coord_tern()
+  
+  
+  return(list(conformal_score, ggplot_vis, x_inner))
+}
+
+
+save(calibration_conformal_scores, 
+     file = "calibration_information_bad_fit.Rdata")
+
+parallel::stopCluster(cl)
+
+```
+
