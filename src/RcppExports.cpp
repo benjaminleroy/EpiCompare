@@ -28,10 +28,95 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// scalartimesmat
+NumericMatrix scalartimesmat(NumericMatrix m, double s);
+RcppExport SEXP _EpiCompare_scalartimesmat(SEXP mSEXP, SEXP sSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type m(mSEXP);
+    Rcpp::traits::input_parameter< double >::type s(sSEXP);
+    rcpp_result_gen = Rcpp::wrap(scalartimesmat(m, s));
+    return rcpp_result_gen;
+END_RCPP
+}
+// addmats
+NumericMatrix addmats(NumericMatrix m1, NumericMatrix m2);
+RcppExport SEXP _EpiCompare_addmats(SEXP m1SEXP, SEXP m2SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type m1(m1SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type m2(m2SEXP);
+    rcpp_result_gen = Rcpp::wrap(addmats(m1, m2));
+    return rcpp_result_gen;
+END_RCPP
+}
+// distvec
+NumericVector distvec(NumericMatrix m1, List l2, bool usefrac);
+RcppExport SEXP _EpiCompare_distvec(SEXP m1SEXP, SEXP l2SEXP, SEXP usefracSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type m1(m1SEXP);
+    Rcpp::traits::input_parameter< List >::type l2(l2SEXP);
+    Rcpp::traits::input_parameter< bool >::type usefrac(usefracSEXP);
+    rcpp_result_gen = Rcpp::wrap(distvec(m1, l2, usefrac));
+    return rcpp_result_gen;
+END_RCPP
+}
+// difffunction
+double difffunction(NumericMatrix m1, NumericMatrix m2, bool usefrac);
+RcppExport SEXP _EpiCompare_difffunction(SEXP m1SEXP, SEXP m2SEXP, SEXP usefracSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type m1(m1SEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type m2(m2SEXP);
+    Rcpp::traits::input_parameter< bool >::type usefrac(usefracSEXP);
+    rcpp_result_gen = Rcpp::wrap(difffunction(m1, m2, usefrac));
+    return rcpp_result_gen;
+END_RCPP
+}
+// inner_dist_density
+NumericVector inner_dist_density(NumericVector distance, double sigma);
+RcppExport SEXP _EpiCompare_inner_dist_density(SEXP distanceSEXP, SEXP sigmaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type distance(distanceSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma(sigmaSEXP);
+    rcpp_result_gen = Rcpp::wrap(inner_dist_density(distance, sigma));
+    return rcpp_result_gen;
+END_RCPP
+}
+// psuedo_density_mode_cluster
+List psuedo_density_mode_cluster(List X_list, List G_list, double sigma, double eps, int maxT, bool verbose, bool usefrac);
+RcppExport SEXP _EpiCompare_psuedo_density_mode_cluster(SEXP X_listSEXP, SEXP G_listSEXP, SEXP sigmaSEXP, SEXP epsSEXP, SEXP maxTSEXP, SEXP verboseSEXP, SEXP usefracSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type X_list(X_listSEXP);
+    Rcpp::traits::input_parameter< List >::type G_list(G_listSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma(sigmaSEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< int >::type maxT(maxTSEXP);
+    Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
+    Rcpp::traits::input_parameter< bool >::type usefrac(usefracSEXP);
+    rcpp_result_gen = Rcpp::wrap(psuedo_density_mode_cluster(X_list, G_list, sigma, eps, maxT, verbose, usefrac));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_EpiCompare_l2filamentdist", (DL_FUNC) &_EpiCompare_l2filamentdist, 2},
     {"_EpiCompare_distalongpath", (DL_FUNC) &_EpiCompare_distalongpath, 1},
+    {"_EpiCompare_scalartimesmat", (DL_FUNC) &_EpiCompare_scalartimesmat, 2},
+    {"_EpiCompare_addmats", (DL_FUNC) &_EpiCompare_addmats, 2},
+    {"_EpiCompare_distvec", (DL_FUNC) &_EpiCompare_distvec, 3},
+    {"_EpiCompare_difffunction", (DL_FUNC) &_EpiCompare_difffunction, 3},
+    {"_EpiCompare_inner_dist_density", (DL_FUNC) &_EpiCompare_inner_dist_density, 2},
+    {"_EpiCompare_psuedo_density_mode_cluster", (DL_FUNC) &_EpiCompare_psuedo_density_mode_cluster, 7},
     {NULL, NULL, 0}
 };
 
