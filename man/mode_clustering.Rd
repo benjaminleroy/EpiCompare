@@ -9,9 +9,10 @@ mode_clustering(
   g_names,
   position,
   sigma,
-  eps = 1e-06,
+  eps = 1e-05,
   maxT = 30,
-  diff_eps = 1e-08,
+  diff_eps = 1e-05,
+  usefrac = F,
   verbose = T
 )
 }
@@ -35,6 +36,9 @@ if the point has converged}
 
 \item{diff_eps}{scalar, if the final step of each of the points is within
 this distance from each-other they will be grouped together.}
+
+\item{usefrac}{boolean, if we should use fraction approach to l2 distance
+or not. Naturally is related to \code{sigma} value.}
 
 \item{verbose}{boolean, if we should show progress (done with a  C++ 
 based progressbar)}

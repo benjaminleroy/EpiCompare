@@ -8,7 +8,7 @@ functional_psuedo_density_mode_cluster(
   X_list,
   G_list = X_list,
   sigma,
-  eps = 1e-06,
+  eps = 1e-05,
   maxT = 10,
   verbose = TRUE,
   usefrac = FALSE

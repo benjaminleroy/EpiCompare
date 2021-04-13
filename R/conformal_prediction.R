@@ -20,7 +20,7 @@
 #' @export
 functional_psuedo_density_mode_cluster <- function(X_list, G_list=X_list, 
                                                    sigma,
-                                                   eps = 1e-06,  
+                                                   eps = 1e-05,  
                                                    maxT = 10,
                                                    verbose = TRUE,
                                                    usefrac = FALSE){
@@ -73,14 +73,18 @@ functional_psuedo_density_mode_cluster <- function(X_list, G_list=X_list,
 #' @param maxT integer, max number of iterations of the algorithm
 #' @param diff_eps scalar, if the final step of each of the points is within
 #' this distance from each-other they will be grouped together.
+#' @param usefrac boolean, if we should use fraction approach to l2 distance
+#' or not. Naturally is related to \code{sigma} value.
 #' @param verbose  boolean, if we should show progress (done with a  C++ 
 #' based progressbar)
 #'
 #' @return data frame with \code{g_names} and a \code{grouping} column which 
 #' indicates which mode group each observation is in.
 #' @export 
-mode_clustering <- function(g_list, g_names, position, sigma, eps = 1e-06, maxT = 30,
-                            diff_eps = 1e-08, verbose = T){
+mode_clustering <- function(g_list, g_names, position, sigma, eps = 1e-05, maxT = 30,
+                            diff_eps = 1e-05, 
+                            usefrac = F,
+                            verbose = T){
   g_list_inner <- g_list %>% 
     lapply(function(df) df[,position])
   
@@ -88,15 +92,19 @@ mode_clustering <- function(g_list, g_names, position, sigma, eps = 1e-06, maxT 
                                                 sigma = sigma,
                                                 eps = eps,
                                                 verbose = verbose,
-                                                maxT = maxT
+                                                maxT = maxT,
+                                                usefrac = usefrac
   )
   dist_mat <- dist_matrix_innersq_direction(out %>%
                                               lapply(function(x) as.data.frame(x)),
                                             position = 1:ncol(out[[1]]),
+                                            usefrac = usefrac,
                                             verbose = verbose) # could updated to include usefrac...
   adjmatrix <- dist_mat <= diff_eps
   ig <- igraph::graph_from_adjacency_matrix(adjmatrix, mode = "undirected")
+
   groupings <- igraph::components(ig, mode = "strong")$membership
+  
   if (inherits(g_names, "data.frame")){
     return(cbind(g_names, groupings))
   } else {
@@ -630,7 +638,7 @@ simulation_based_conformal3 <- function(truth_grouped_df, simulations_grouped_df
     if (.mode_cluster){
       out_groups <- mode_clustering(g_list = sim_list, g_names = sim_names,
                                     position = which(names(sim_list[[1]]) %in% data_column_names),
-                                    sigma = sigma_val, maxT = max(length(sim_list), 15),
+                                    sigma = sigma_val, 
                                     verbose = verbose)
       
       simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
@@ -703,6 +711,294 @@ simulation_based_conformal3 <- function(truth_grouped_df, simulations_grouped_df
 }
 
 
+#' global wrapper for simulation-based conformal score calculation that allows 
+#' for mode clustering and changes of radius. 
+#' 
+#' Mode clustering also is able to be on more course approximate of the 
+#' filaments.
+#'
+#' @param truth_grouped_df data frame with filaments information (can be a 
+#' grouped_df) to be assessed.
+#' @param simulations_grouped_df grouped data frame with multiple simulated 
+#' filaments information
+#' @param data_column_names columns of \code{df_row_group} and 
+#' \code{simulations_group_df} that correspond to the output space.
+#' @param number_points  the number of points the filament should be compressed 
+#' to (if \code{Inf} then no compression is applied.
+#' @param .change_radius boolean, if we should use the changing radius approach
+#' @param .mode_cluster boolean, if we should use mode clustering
+#' @param .to_simplex boolean, if we should project points on the unit simplex.
+#' @param .use_frac boolean, if distances should be defined relative to a
+#' scaling for the number of points in the path.
+#' @param .small_size_mode_cluster int, the number of points the filament should 
+#' be compressed to when estimating the mode clustering. We recommend a smaller
+#' number to speed up the mode clustering algorithm.  (if Inf, then no change in 
+#' size relative to \code{number_points})
+#' @param .maxT int, max number of steps for mode clustering mean-shift 
+#' algorithm
+#' @param .sigma_string string, the quantile of the distance matrix to define
+#' the sigma (e.g. \code{"30\%"})
+#' @param .diff_eps float, the error allows between mode clustered final steps
+#' to still be counted as the same mode.
+#' @param verbose boolean, be verbose about progression
+#'
+#' @return list of information...
+#' @export
+simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_df,
+                                        data_column_names = c("S", "I", "R"),
+                                        number_points = Inf,
+                                        .change_radius = TRUE,
+                                        .mode_cluster = TRUE,
+                                        .to_simplex = TRUE,
+                                        .use_frac = FALSE,
+                                        .small_size_mode_cluster = Inf,
+                                        .maxT = 50,
+                                        .sigma_string = "35%",
+                                        .diff_eps = 1e-06,
+                                        verbose = FALSE){
+  
+  
+  
+  # "record keeping" (keeping track of keys for sims and new obs)
+  assertthat::assert_that(inherits(simulations_grouped_df, "grouped_df"))
+  sim_group_names <- names(dplyr::group_keys(simulations_grouped_df))
+  simulations_group_df_inner <- simulations_grouped_df[c(sim_group_names,
+                                                         data_column_names)]
+  
+  assertthat::assert_that(inherits(truth_grouped_df, "grouped_df"))
+  group_names_containment <- names(dplyr::group_keys(truth_grouped_df))
+  truth_df_inner <- truth_grouped_df[c(group_names_containment,
+                                       data_column_names)]
+  
+  sim_list <- simulations_group_df_inner %>% dplyr::group_split()
+  sim_names <- simulations_group_df_inner %>% dplyr::group_keys()
+  
+  all_info_list <- truth_grouped_df %>% dplyr::group_split()
+  all_info_df <- do.call(rbind,all_info_list)
+  all_info_nrows <- all_info_list %>% sapply(nrow)
+  all_info_which <- do.call(c,lapply(1:length(all_info_nrows),
+                                     function(x) rep(x, all_info_nrows[x])))
+  all_info_names <- truth_grouped_df %>% dplyr::group_keys()
+  g_names <- names(all_info_names)
+  all_info_names <- all_info_names %>%
+    dplyr::mutate(single_numeric_idx = 1:nrow(all_info_names))
+  
+  
+  
+  
+  if (number_points == Inf){
+    .do_filament_compression <- FALSE
+  } else {
+    .do_filament_compression <- TRUE
+  }
+  
+  if (.small_size_mode_cluster == Inf & .mode_cluster){
+    .do_mode_filament_compression <- FALSE
+  } else {
+    .do_mode_filament_compression <- TRUE
+  }
+  
+  if(.mode_cluster & .do_mode_filament_compression & !.use_frac){
+    message(paste("if you are doing filament compression for mode estimation",
+                   "we recommend setting '.use_frac' to TRUE."))
+  }
+  
+  
+  if (.to_simplex){
+    truth_df_inner <- truth_df_inner %>% as.data.frame() %>%
+      get_xy_coord(xyz_col = data_column_names) %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(group_names_containment)))
+    
+    simulations_group_df_inner <- simulations_group_df_inner %>%
+      as.data.frame() %>% get_xy_coord(xyz_col = data_column_names) %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(g_names)))
+    data_column_names <- c("x","y")
+  }
+  
+  #truth_df_inner <- truth_df_inner %>%
+  #  mutate_at(vars(one_of(group_names_containment)), as.character)
+  
+  truth_df_non_group_idx <- which(
+    names(truth_df_inner) %in% data_column_names)
+  
+  #simulations_group_df_inner <- simulations_group_df_inner %>%
+  #  mutate_at(vars(one_of(sim_group_names)), as.character)  # why is this done?
+  
+  simulations_group_df_non_group_idx <- which(
+    names(simulations_group_df_inner) %in% data_column_names)
+  
+  if (.do_filament_compression){
+    truth_df_inner <- truth_df_inner %>%
+      filament_compression(data_columns = truth_df_non_group_idx,
+                           number_points = number_points)
+    
+    simulations_group_df_inner <- simulations_group_df_inner %>%
+      filament_compression(data_columns = simulations_group_df_non_group_idx,
+                           number_points = number_points)
+  }
+  
+  tdm_sims <- dist_matrix_innersq_direction(simulations_group_df_inner,
+                                            position = simulations_group_df_non_group_idx,
+                                            usefrac = .use_frac,
+                                            tdm_out = T,
+                                            verbose = verbose)
+  
+  # sigma selection
+  sigma_lower <- check_character_percent(.sigma_string, ".sigma_string")
+  sigma_sizes <- sapply(sigma_lower + .05*(0:5), function(v) min(v, 1))
+  
+  percentage_inner <- sigma_sizes[stats::quantile(as.matrix(tdm_sims), sigma_sizes) > 0][1]
+  
+  sigma_val <- stats::quantile(as.matrix(tdm_sims), percentage_inner)
+  
+  # rank_df
+  pseudo_density_df <- distance_psuedo_density_function(
+    tdm_sims,
+    sigma = sigma_val, df_out = T) %>%
+    dplyr::mutate(ranking = rank(-.data$psuedo_density,ties.method = "random")) #spelling error... :(, no ties! need ordering
+  
+  assertthat::assert_that(all(!is.na(pseudo_density_df$psuedo_density)),
+                          msg = paste("internal error in",
+                                      "distance_psuedo_density_function",
+                                      "function's sigma selection."))
+  
+  if (!.change_radius){
+    top_points <- top_curves_to_points(simulations_group_df_inner,tidy_dm = tdm_sims,
+                                       alpha = .2,
+                                       quantile_func = distance_psuedo_density_function,
+                                       sigma = sigma_val) # 80% curve remain
+    
+    assertthat::assert_that(nrow(top_points) > 0,
+                            msg = paste("the number of simulations are so few",
+                                        "thatthere are too few to estimate the",
+                                        "shared radius."))
+    
+    mm_delta <- get_delta_nn(top_points[,data_column_names])
+    
+    # modes 
+    if (.mode_cluster){
+      if(!.do_mode_filament_compression){
+        out_groups <- mode_clustering(g_list = sim_list, g_names = sim_names,
+                                      position = which(names(sim_list[[1]]) %in% data_column_names),
+                                      sigma = sigma_val, maxT = .maxT,
+                                      usefrac = .use_frac, diff_eps = .diff_eps,
+                                      verbose = verbose)
+        
+        simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+        simulation_info_df <- simulation_info_out[[1]]
+        ordering_list <- simulation_info_out[[2]]
+      } else {
+        #browser()
+        c_s_out <- compression_and_sigma_estimate(sim_grouped_df = simulations_group_df_inner,
+                                                  data_columns = data_column_names,
+                                                  usefrac = .use_frac,
+                                                  number_points = .small_size_mode_cluster,
+                                                  .sigma_string = .sigma_string,
+                                                  verbose = verbose)
+        c_g_list <- c_s_out$compression %>% dplyr::group_split()
+        c_g_names <-  c_s_out$compression %>% dplyr::group_keys()
+        c_position <- (1:ncol(c_s_out$compression))[names(c_s_out$compression) %in% data_column_names]
+        out_groups <- mode_clustering(g_list = c_g_list,g_names = c_g_names,
+                                   position = c_position,
+                                   sigma = c_s_out$sigma, maxT = .maxT, 
+                                   usefrac = .use_frac,diff_eps = .diff_eps,
+                                   verbose = verbose)
+        
+        simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+        simulation_info_df <- simulation_info_out[[1]]
+        ordering_list <- simulation_info_out[[2]]
+      }
+    } else {
+      out_groups <- sim_names %>% dplyr::mutate(groupings = 1)
+      simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+      simulation_info_df <- simulation_info_out[[1]]
+      ordering_list <- simulation_info_out[[2]]
+    }
+    
+    tm_radius <- inner_convert_single_radius_to_structure(mm_delta, ordering_list)
+    
+    conformal_df <- inner_containment_conformal_score_mode_radius(
+      df_row_group = truth_df_inner,
+      simulations_group_df = simulations_group_df_inner, 
+      data_column_names = data_column_names,
+      simulation_info_df = simulation_info_df, 
+      list_radius_info = tm_radius,
+      list_grouping_id = ordering_list,
+      verbose = verbose)
+    
+  } else {
+    # varying radius
+    mm_delta <- NA
+    # get groupings...
+    if (.mode_cluster){
+      if(!.do_mode_filament_compression){
+        out_groups <- mode_clustering(g_list = sim_list, g_names = sim_names,
+                                      position = which(names(sim_list[[1]]) %in% data_column_names),
+                                      sigma = sigma_val, maxT = .maxT,
+                                      usefrac = .use_frac, diff_eps =.diff_eps,
+                                      verbose = verbose)
+        
+        simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+        simulation_info_df <- simulation_info_out[[1]]
+        ordering_list <- simulation_info_out[[2]]
+      } else {
+        #browser()
+        c_s_out <- compression_and_sigma_estimate(sim_grouped_df = simulations_group_df_inner,
+                                                  data_columns = data_column_names,
+                                                  usefrac = .use_frac,
+                                                  number_points = .small_size_mode_cluster,
+                                                  .sigma_string = .sigma_string,
+                                                  verbose = verbose)
+        c_g_list <- c_s_out$compression %>% dplyr::group_split()
+        c_g_names <-  c_s_out$compression %>% dplyr::group_keys()
+        c_position <- (1:ncol(c_s_out$compression))[names(c_s_out$compression) %in% data_column_names]
+        out_groups <- mode_clustering(g_list = c_g_list,g_names = c_g_names,
+                                      position = c_position,
+                                      sigma = c_s_out$sigma, maxT = .maxT, 
+                                      usefrac = .use_frac,diff_eps = .diff_eps,
+                                      verbose = verbose)
+        
+        simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+        simulation_info_df <- simulation_info_out[[1]]
+        ordering_list <- simulation_info_out[[2]]
+      }
+    } else {
+      out_groups <- sim_names %>% dplyr::mutate(groupings = 1)
+      simulation_info_out <- inner_expanding_info(pseudo_density_df, out_groups)
+      simulation_info_df <- simulation_info_out[[1]]
+      ordering_list <- simulation_info_out[[2]]
+    }
+    
+    
+    tm_radius <- coverage_down_mlist(data_ll = sim_list,
+                                     e_cols = data_column_names,
+                                     g_order_ll =  ordering_list,
+                                     names_df = sim_names,
+                                     verbose = verbose)
+    
+    conformal_df <- inner_containment_conformal_score_mode_radius(
+      df_row_group = truth_df_inner,
+      simulations_group_df = simulations_group_df_inner, 
+      data_column_names = data_column_names,
+      simulation_info_df = simulation_info_df, 
+      list_radius_info = tm_radius,
+      list_grouping_id = ordering_list,
+      verbose = verbose)
+    
+    
+  }
+  
+  return(list(conformal_score = conformal_df, containment_df = simulation_info_df,
+              mm_delta = mm_delta, tm_radius = tm_radius,
+              truth_df_inner = truth_df_inner,
+              simulations_group_df_inner = simulations_group_df_inner,
+              parameters = c("mm_delta_prop" = .2,
+                             "sigma_percentage" = percentage_inner,
+                             "filament_num_points" = number_points)))
+}
+
+
+
 #' calculate maxmin distance between points
 #'
 #' Fast calculation of maxmin distance using kd trees and nearest neighbors from
@@ -718,6 +1014,71 @@ get_delta_nn <- function(df){
   check <- RANN::nn2(df, df, k = 2, treetype = "kd", eps = 0)
   mm_delta <- check$nn.dists[,2] %>% max()
   return(mm_delta)
+}
+
+
+
+#' inner l2 distance between filaments
+#'
+#' Basically the same as \code{l2filamentdist_df}
+#'
+#' @param df1 data.frame (n x p)
+#' @param df2 data.frame (n x p)
+#' @param usefrac if we should calculate the distance relative to a scaling of 
+#' 1/nrow(\code{df1}) (before taking the square-root).
+#'
+#' @return distance between filaments 
+#' @export
+l2_filament_distance <- function(df1, df2, usefrac = F){
+  difffunction(as.matrix(df1), as.matrix(df2), usefrac = usefrac)
+}
+
+
+#' compress filaments and estimate psuedo-density sigma in 1 go
+#'
+#' @param sim_grouped_df grouped_df, set of simulated filaments
+#' @param data_columns string of data columns that are associated with location
+#' information
+#' @param usefrac boolean, if the distance between filaments should scale 
+#' relative to the number of points in compression (before sqrt)
+#' @param number_points number of points to compressed the data with
+#' @param .sigma_string string with percentage use for sigma (relative to 
+#' distance matrix), e.g. \code{"30\%"}
+#' @param verbose boolean, if we should be verbose when processing...
+#'
+#' @return list of compression of data as well as the sigma estimate...
+#' @export
+compression_and_sigma_estimate <- function(sim_grouped_df,
+                                           data_columns,
+                                           usefrac = T,
+                                           number_points = 50,
+                                           .sigma_string = "30%",
+                                           verbose = T){
+  # compression of points ----
+  compressed_points <- sim_grouped_df %>%
+    filament_compression(data_columns = data_columns,
+                         number_points = number_points)
+  
+  # estimate of sigma ----
+  position <- c(1:ncol(compressed_points))[
+    names(compressed_points) %in% data_columns]
+  
+  tdm_sims <- dist_matrix_innersq_direction(compressed_points,
+                                            position = position,
+                                            usefrac = usefrac,
+                                            verbose = verbose,
+                                            tdm_out = T)
+  # sigma selection
+  sigma_lower <- check_character_percent(.sigma_string, ".sigma_string")
+  sigma_sizes <- sapply(sigma_lower + .05*(0:5), function(v) min(v, 1))
+  
+  percentage_inner <- sigma_sizes[stats::quantile(as.matrix(tdm_sims), sigma_sizes) > 0][1]
+  
+  sigma_val <- stats::quantile(as.matrix(tdm_sims), percentage_inner)
+  
+  return(list(compression = compressed_points,
+              sigma = sigma_val))
+  
 }
 
 #------------------------------------------------
@@ -747,7 +1108,7 @@ get_delta_nn <- function(df){
 functional_psuedo_density_mode_cluster_r <- function(X_list,
                                                      G_list=X_list,
                                                      sigma, # parameters of distance_kernel_function
-                                                     eps = 1e-06,
+                                                     eps = 1e-05,
                                                      maxT = 10,
                                                      verbose = TRUE){
   # usefrac is always false (in distance_kernel_function_r and diff_function_r)

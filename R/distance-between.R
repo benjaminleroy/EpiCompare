@@ -387,6 +387,8 @@ dist_matrix_innersq_angle <- dist_matrix_innersq_2d
 #'
 #' @param x list of paths (data frames) - need to have the same num rows or a nested_df
 #' @param position column index of (x,y,...) euclidean coords.
+#' @param usefrac if we should calculate the distance relative to a scaling of 
+#' 1/nrow(x[[i]]) (before taking the square-root).
 #' @param verbose boolean logic if should have print outs while computing
 #' distance matrix
 #' @param tdm_out boolean logic if we should return a \code{tidy_dist_mat} 
@@ -395,6 +397,7 @@ dist_matrix_innersq_angle <- dist_matrix_innersq_2d
 #' @return distance matrix of dimension n x n or data.frame - DESCRIBE
 #' @export
 dist_matrix_innersq_direction <- function(x, position = NULL,
+                                          usefrac = FALSE,
                                           verbose = FALSE,
                                           tdm_out = FALSE){
     UseMethod("dist_matrix_innersq_direction")
@@ -413,6 +416,7 @@ l2filamentdist_df  <- function(m1, m2){
 #' @export
 #' @rdname dist_matrix_innersq_direction
 dist_matrix_innersq_direction.list <- function(x,  position = NULL,
+                                          usefrac = FALSE,
                                           verbose = FALSE, tdm_out = FALSE){
   
   rnames <- names(x)
@@ -443,8 +447,9 @@ dist_matrix_innersq_direction.list <- function(x,  position = NULL,
   for (i in c(1:n_mat)) {
     for (j in c(i:n_mat)) {
 
-      output_mat[i,j] <- l2filamentdist_df(x[[i]][, position],
-                                           x[[j]][, position])
+      output_mat[i,j] <- l2_filament_distance(x[[i]][, position],
+                                              x[[j]][, position],
+                                              usefrac = usefrac)
       #output_mat[i,j] <- sum(
       #  (x[[i]][, position] - x[[j]][, position])^2
       #)
@@ -481,6 +486,7 @@ if (r_new_interface()){
 #' @export
 #' @rdname dist_matrix_innersq_direction
 dist_matrix_innersq_direction.data.frame <- function(x, position = NULL,
+                                                     usefrac = FALSE,
                                                      verbose = FALSE, 
                                                      tdm_out = FALSE){
   
@@ -500,6 +506,7 @@ dist_matrix_innersq_direction.data.frame <- function(x, position = NULL,
   
   dist_mat <- dist_matrix_innersq_direction.list(x = path_list,
                                                  position = position, 
+                                                 usefrac = usefrac,
                                                  verbose = verbose,
                                                  tdm_out = FALSE)
   
@@ -520,6 +527,7 @@ if (r_new_interface()){
 #' @export
 #' @rdname dist_matrix_innersq_direction
 dist_matrix_innersq_direction.grouped_df <- function(x, position = NULL,
+                                                     usefrac = FALSE,
                                                      verbose = FALSE, 
                                                      tdm_out = FALSE){
   
@@ -550,7 +558,8 @@ dist_matrix_innersq_direction.grouped_df <- function(x, position = NULL,
                                       "which doesn't make sense"))
   
   dist_mat <- dist_matrix_innersq_direction.list(x = path_list,
-                                                 position = position_inner, 
+                                                 position = position_inner,
+                                                 usefrac = usefrac,
                                                  verbose = verbose,
                                                  tdm_out = FALSE)
   
