@@ -223,7 +223,8 @@ coverage_down_mlist <- function(data_ll,
   t <- 1
   
   for (order_vec in g_order_ll){
-    coverd_info[[t]] <- coverage_down_list(data_ll[order_vec], {{e_cols}})
+    coverd_info[[t]] <- coverage_down_list(data_ll[order_vec], {{e_cols}},
+                                           verbose = verbose)
     l_min_cover_vec[[t]] <- coverd_info[[t]]$min_cover_vec
     l_dist_mat[[t]] <- coverd_info[[t]]$dist_mat
     
@@ -428,11 +429,19 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
         if (length(which_rows_news_all) == 1){
           new_contained <- nn_dist_mat[which_rows_news_all,current_not_contained] < inner_radius_mat[which_rows_news_all,current_idx]
         } else {
-          new_contained <- sweep(x = nn_dist_mat[which_rows_news_all,current_not_contained], 
-                                 MARGIN = 1,
-                                 STATS = inner_radius_mat[which_rows_news_all,current_idx], 
-                                 FUN = "<") %>%
-            colSums() %>% sapply(function(x) x > 0)
+          if (sum(current_not_contained) == 1){
+            new_contained <- sweep(x = nn_dist_mat[which_rows_news_all,current_not_contained, drop = F], 
+                                   MARGIN = 1,
+                                   STATS = inner_radius_mat[which_rows_news_all,current_idx], 
+                                   FUN = "<") %>%
+              colSums() %>% sapply(function(x) x > 0)
+          } else {
+            new_contained <- sweep(x = nn_dist_mat[which_rows_news_all,current_not_contained], 
+                                   MARGIN = 1,
+                                   STATS = inner_radius_mat[which_rows_news_all,current_idx], 
+                                   FUN = "<") %>%
+              colSums() %>% sapply(function(x) x > 0)
+          }
         }
       }
       nn_containment_num[current_not_contained] <- new_contained * (current_idx) + (!new_contained) * (n_draws + 1)
@@ -1025,6 +1034,7 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' @param .diff_eps float, the error allows between mode clustered final steps
 #' to still be counted as the same mode.
 #' @param verbose boolean, be verbose about progression
+#' @param return_min boolean, if list of information returned is mimimum (for slurm)
 #'
 #' @return list of information...
 #' @export
@@ -1037,7 +1047,8 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                         .maxT = 50,
                                         .sigma_string = "35%",
                                         .diff_eps = 1e-06,
-                                        verbose = FALSE){
+                                        verbose = FALSE,
+                                        return_min = FALSE){
   # "record keeping" (keeping track of keys for sims and new obs)
   assertthat::assert_that(inherits(simulations_grouped_df, "grouped_df"))
   sim_group_names <- names(dplyr::group_keys(simulations_grouped_df))
@@ -1243,21 +1254,33 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     list_grouping_id = ordering_list_nm, # diff
     verbose = verbose)
     
-  return(list(conformal_score = list(fixed = conformal_df_fixed,
-                                     fixed_nm = conformal_df_fixed_nm,
-                                     vary = conformal_df_vary,
-                                     vary_nm = conformal_df_vary_nm), 
-              containment_df = simulation_info_df,
-              mm_delta = mm_delta, 
-              tm_radius = list(fixed = tm_radius_fixed,
-                               fixed_nm = tm_radius_fixed_nm,
-                               vary = tm_radius_vary,
-                               vary_nm = tm_radius_vary_nm),
-              truth_df_inner = truth_df_inner,
-              simulations_group_df_inner = simulations_group_df_inner,
-              parameters = c("mm_delta_prop" = .2,
-                             "sigma_percentage" = percentage_inner,
-                             "filament_num_points" = number_points)))
+  if (return_min){
+    return(list(conformal_score = list(fixed = conformal_df_fixed,
+                                       fixed_nm = conformal_df_fixed_nm,
+                                       vary = conformal_df_vary,
+                                       vary_nm = conformal_df_vary_nm), 
+                parameters = c("mm_delta_prop" = .2,
+                               "mm_delta" = mm_delta,
+                               "sigma_percentage" = percentage_inner,
+                               "filament_num_points" = number_points)))
+  } else{
+    return(list(conformal_score = list(fixed = conformal_df_fixed,
+                                       fixed_nm = conformal_df_fixed_nm,
+                                       vary = conformal_df_vary,
+                                       vary_nm = conformal_df_vary_nm), 
+                containment_df = simulation_info_df,
+                mm_delta = mm_delta, 
+                tm_radius = list(fixed = tm_radius_fixed,
+                                 fixed_nm = tm_radius_fixed_nm,
+                                 vary = tm_radius_vary,
+                                 vary_nm = tm_radius_vary_nm),
+                truth_df_inner = truth_df_inner,
+                simulations_group_df_inner = simulations_group_df_inner,
+                parameters = c("mm_delta_prop" = .2,
+                               "sigma_percentage" = percentage_inner,
+                               "filament_num_points" = number_points)))
+  }
+
   
 }
 
