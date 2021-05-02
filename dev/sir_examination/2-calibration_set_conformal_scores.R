@@ -1,14 +1,14 @@
 # run: Rscript 2-calibration_set_conformal_score.R [1-300] 1000
-# expected run time: 
+# expected run time: 1.3 hours (shoot for 2:15)
 
 # input parameters -----------------------------
-input_args <- commandArgs(trailingOnly=TRUE) 
-calibration_idx <- input_args[1]
+#input_args <- commandArgs(trailingOnly=TRUE) 
+calibration_idx <- 1#input_args[1]
 
 #calibration_idx <- 1
 
 # initial global parameters --------------------
-n_simulations <- input_args[2] #1000
+n_simulations <- 1000#input_args[2] #1000
 number_points <- 150
 
 # library loading -------------------------
@@ -108,4 +108,3 @@ elapsed_time <- Sys.time() - start
 
 data_out <- list(elapsed_time, conformal_score)
     
-
