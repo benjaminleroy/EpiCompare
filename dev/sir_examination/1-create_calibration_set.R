@@ -46,6 +46,6 @@ calibration_paths <- calibration_set_r0 %>%
   dplyr::select(-data) %>%
   tidyr::unnest(sim) 
 
-save(calibration_set_r0, calibration_paths, file = "calibration_paths.Rdata")
+save(calibration_set_r0, calibration_paths, file = "data/calibration_paths.Rdata")
 
 

@@ -2,13 +2,13 @@
 # expected run time: 1.3 hours (shoot for 2:15)
 
 # input parameters -----------------------------
-#input_args <- commandArgs(trailingOnly=TRUE) 
-calibration_idx <- 1#input_args[1]
+input_args <- as.numeric(commandArgs(trailingOnly=TRUE))
+calibration_idx <- input_args[1]
 
 #calibration_idx <- 1
 
 # initial global parameters --------------------
-n_simulations <- 1000#input_args[2] #1000
+n_simulations <- input_args[2] #1000
 number_points <- 150
 
 # library loading -------------------------
@@ -17,17 +17,24 @@ library(tidyr)
 library(devtools)
 
 # load 
-if (getwd() != "/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination") {
-  setwd("/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination")
-}
+user_name <- Sys.info()["user"]
 
-load_all("../../") # just EpiCompare@ben_dev_and_thesis
-load_all("../../../simulationBands")
+if (user_name == "benjaminleroy"){ # personal computer
+  if (getwd() != "/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination") {
+    setwd("/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination")
+  }
+  
+  load_all("../../") # just EpiCompare@ben_dev_and_thesis
+  load_all("../../../simulationBands")
+} else { # vera.psc.edu
+  library(EpiCompare)
+  library(simulationBands)
+}
 
 
 # calibration data loading -------------------
 
-load("calibration_paths.Rdata")
+load("data/calibration_paths.Rdata")
 
 # calibration analysis (single) --------------------
 
@@ -106,5 +113,11 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = inner_truth_df
 elapsed_time <- Sys.time() - start
 
 
-data_out <- list(elapsed_time, conformal_score)
+data_out <- list(calibration_idx = calibration_idx,
+                 n_simulations = n_simulations,
+                 elapsed_time = elapsed_time, 
+                 conformal_scores = conformal_score)
     
+save(data_out, file = paste0("data/calibration-info-nsim_",
+                             n_simulations, "-", calibration_idx,
+                             ".Rdata"))
