@@ -92,7 +92,7 @@ testthat::test_that("test psuedo_density_mode_cluster", {
     rsmart = functional_psuedo_density_mode_cluster_r(X_list = all_curves,
                                                       G_list = all_curves,
                                                       sigma = sigma, verbose = F,
-                                                      maxT = 30),times = 10)
+                                                      maxT = 30),times = 20)
   median_info <- summary(mb_out)$median
   testthat::expect_lt(median_info[1], median_info[2])
   testthat::expect_lt(median_info[2], median_info[3])
@@ -326,6 +326,78 @@ testthat::test_that("test coverage_down_list, basics", {
 })
 
 
+testthat::test_that("test inner_expanding_info", {
+  curve1 <- data.frame(x = (1:50)/2,
+                       y = (1:50)/2,
+                       id = "1")
+  curve2 <- curve1 %>%
+    mutate(x = x + sqrt(2)/2,
+           y = y - sqrt(2)/2,
+           id = "2")
+  curve3 <- curve1 %>%
+    mutate(x = x - sqrt(2)/2,
+           y = y + sqrt(2)/2,
+           id = "3")
+  all_curves <- rbind(curve1, curve2, curve3)
+  
+  curve4 <- curve1 %>% mutate(id = "4")
+  curve4$index <- curve4$x > 12.5
+  curve4$x <- curve4$x + sqrt(2) * c(-1,1)[curve4$index+1]
+  curve4$y <- curve4$y + sqrt(2) * c(1,-1)[curve4$index+1]
+  curve4 <- curve4 %>% select(-index)
+  
+  curve5 <- curve2 %>%
+    mutate(x = x - 1.52 * sqrt(2)/2,
+           y = y + 1.52 * sqrt(2)/2,
+           id = "5")
+  
+  all_curves <- rbind(curve1, curve2, curve3, curve4, curve5)
+  
+  all_curves2 <- all_curves %>% 
+    mutate(x = x + 7, y = y - 7,
+           id = as.character(as.numeric(id) + 5))
+  
+  all_curves <- rbind(all_curves, all_curves2)
+
+  
+  if (FALSE){ # visualize
+    #all_curves <- rbind(curve1, curve2, curve3, curve4, curve5)
+    all_curves %>% ggplot() +
+      geom_line(aes(x = x , y = y, color = id))
+  }
+  
+  sim_curves <- all_curves %>% filter(!(id %in% c("8", "2"))) %>% 
+    group_by(id)
+  
+  tdmat <- dist_matrix_innersq_direction.grouped_df(sim_curves,position = 1:2,
+                                                    verbose = T,tdm_out = T) 
+  sigma <- as.matrix(tdmat) %>% quantile(.35)
+  
+  ps_d <- distance_psuedo_density_function(tdmat,sigma = sigma,df_out = T) %>%
+    mutate(id = as.numeric(id))
+  sim_curves_list <- sim_curves %>%
+    mutate(id = as.numeric(id)) %>% group_split() 
+  sim_curves_names <- sim_curves %>% 
+    mutate(id = as.numeric(id)) %>% 
+    group_keys()
+  
+  m_d <- mode_clustering(g_list = sim_curves_list, 
+                         g_names = sim_curves_names, 
+                         position = 1:2, diff_eps = 1e-05,usefrac = F,
+                         sigma =sigma, maxT = 30,
+                         verbose = F)
+  
+  out_d <- inner_expanding_info(ps_d, m_d)
+  
+  ps_d_plus <- out_d[[1]]
+  testthat::expect_equivalent(ps_d_plus[,1:2], ps_d) # just checking they're the same
+  
+  list_info <- out_d[[2]]
+  testthat::expect_equal(list_info[[1]], c(4,1,2,3))
+  testthat::expect_equal(list_info[[2]], c(5,8,6,7))
+})
+
+
 testthat::test_that("test inner_min_dist_per_point, basic", {
   curve1 <- data.frame(x = (1:50)/2,
                        y = (1:50)/2,
@@ -403,6 +475,15 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
   
   all_curves <- rbind(all_curves, all_curves2)
   
+  curve11 <- curve1 %>%
+    mutate(id = 11)
+  curve11$x[50] <- 20
+  
+  curve12 <- curve1 %>%
+    mutate(id = 12)
+  
+  all_curves <- rbind(all_curves,curve11,
+                      curve12)
   
   if (FALSE){ # visualize
     #all_curves <- rbind(curve1, curve2, curve3, curve4, curve5)
@@ -410,9 +491,11 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
       geom_line(aes(x = x , y = y, color = id))
   }
   
-  sim_curves <- all_curves %>% filter(!(id %in% c("8","2"))) %>% 
+  sim_curves <- all_curves %>% filter(!(id %in% c("8", "2", 
+                                                  "11", "12"))) %>% 
     group_by(id)
-  new_curves <- all_curves %>% filter(id %in% c("8","2")) %>% 
+  new_curves <- all_curves %>% filter(id %in% c("8", "2", 
+                                                "11", "12")) %>% 
     group_by(id)
   
   tdmat <- dist_matrix_innersq_direction.grouped_df(sim_curves,position = 1:2,
@@ -452,11 +535,24 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
                                                        simulation_info_df = simulation_info_df, # needs grouping info? group ranking and overall ranking? and psuedo_density
                                                        list_radius_info = list_radius_info,
                                                        list_grouping_id = order_listing,
-                                                       verbose = F)
+                                                       verbose = F) %>% 
+    ungroup()
   
-  testthat::expect_equal(out %>% ungroup(), 
-                         tibble(id = as.character(c(2,8)), 
-                                containment_val = c(7,4)))
+  # 2 is covered when both 1 and 4 are included (as 4 is extreme). Not before given we are only looking at the first group
+  # 11 needs to have 0 value as it naturally has a bit out outside the maximum radius (per each grouping...) from 
+  # any curve
+  # 8 should be covered when 10 and 7 are included (both)
+  # 12 matches 1, could match 5 after 4 is included...
+  
+  value2 <- 8+1-max(simulation_info_df$ranking[simulation_info_df$id %in% c(1,4)])
+  value12 <- 8+1-min(c(simulation_info_df$ranking[simulation_info_df$id == 1],
+                       max(simulation_info_df$ranking[simulation_info_df$id %in% c(5,4)])))
+  value8 <- 8+1-min(simulation_info_df$ranking[simulation_info_df$id %in% c(10,7)])
+  expected_out <- tibble(id = as.character(c(11,12,2,8)), 
+                         containment_val = c(0,value12,value2,value8))
+  
+  testthat::expect_equal(out, 
+                         expected_out)
   
   # Fixed radius
   tdm_sims <- dist_matrix_innersq_direction(sim_curves,
@@ -486,7 +582,7 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
                          sigma =sigma_val, maxT = 50,
                          verbose = F)
   
-
+  
   
   top_points <- top_curves_to_points(sim_curves,
                                      tidy_dm = tdm_sims,
@@ -495,7 +591,7 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
                                      sigma = sigma_val) # 80% curve remain
   
   mm_delta <- get_delta_nn(top_points[,1:2])
-
+  
   
   for (. in 1:5){
     order_group_info <- inner_expanding_info(psuedo_density_df = ps_d, 
@@ -508,18 +604,35 @@ testthat::test_that("test inner_containment_conformal_score_mode_radius", {
                                                                       order_listing)
     
     out_fixed_r <- inner_containment_conformal_score_mode_radius(df_row_group = new_curves,
-                                                         simulations_group_df = sim_curves, # need the list structure?
-                                                         data_column_names = c("x", "y"),
-                                                         simulation_info_df = simulation_info_df, # needs grouping info? group ranking and overall ranking? and psuedo_density
-                                                         list_radius_info = list_radius_info_fake,
-                                                         list_grouping_id = order_listing,
-                                                         verbose = F)
+                                                                 simulations_group_df = sim_curves, # need the list structure?
+                                                                 data_column_names = c("x", "y"),
+                                                                 simulation_info_df = simulation_info_df, # needs grouping info? group ranking and overall ranking? and psuedo_density
+                                                                 list_radius_info = list_radius_info_fake,
+                                                                 list_grouping_id = order_listing,
+                                                                 verbose = F)
+    
+    
+  
+    # 2 has value 0 as the mm_radius is calculated without both "switched" 
+    # 11 needs to have 0 value as it naturally has a bit out outside mm_radius from 
+    # any curve
+    # 8 should be covered by 10 and just out of range for 11... (match level of 10)
+    # 12 should match 1, (not 5 since "<" not "<=") and be too far away for the rest...
+    # weirdly it does also match 5... but "<=" could be a bit noisy...
+    
+    
+    value12 <- 8+1-min(simulation_info_df$ranking[simulation_info_df$id %in% c(1,5)])
+    value8 <- 8+1-max(simulation_info_df$ranking[simulation_info_df$id == 10])
     testthat::expect_equal(out_fixed_r %>% ungroup(),
-                           tibble(id = as.character(c(2,8)),
-                                  containment_val = c(0,3)))
+                           tibble(id = as.character(c(11,12,2,8)),
+                                  containment_val = c(0,value12,0,value8)))
+    
   }
   
 })
+
+
+
 
 
 testthat::test_that("test simulation_based_conformal3",{
@@ -950,7 +1063,6 @@ testthat::test_that("test simulation_based_conformal3.5 with tests from 3",{
   }
 })
 
-
 testthat::test_that("test simulation_based_conformal3.5 with tests with compression and .use_frac",{
   curve1 <- data.frame(x = (1:50)/2,
                        y = (1:50)/2,
@@ -1072,6 +1184,176 @@ testthat::test_that("test simulation_based_conformal3.5 with tests with compress
     testthat::expect_equal(cs_info$containment_val[cs_info$id == 2], 0)
     testthat::expect_gt(cs_info$containment_val[cs_info$id == 8], 2)
   }
+})
+
+
+testthat::test_that("test simulation_based_conformal4 with tests from 3",{
+  curve1 <- data.frame(x = (1:50)/2,
+                       y = (1:50)/2,
+                       id = "1")
+  curve2 <- curve1 %>%
+    mutate(x = x + sqrt(2)/2 - .01,
+           y = y - sqrt(2)/2 + - .01,
+           id = "2")
+  curve3 <- curve1 %>%
+    mutate(x = x - sqrt(2)/2,
+           y = y + sqrt(2)/2,
+           id = "3")
+  
+  curve4 <- curve1 %>% mutate(id = "4")
+  curve4$index <- curve4$x > 12.5
+  curve4$x <- curve4$x + sqrt(2) * c(-1,1)[curve4$index+1]
+  curve4$y <- curve4$y + sqrt(2) * c(1,-1)[curve4$index+1]
+  curve4 <- curve4 %>% select(-index)
+  
+  if (FALSE){ # visualize
+    all_curves <- rbind(curve1, curve2, curve3, curve4)
+    all_curves %>% ggplot() +
+      geom_line(aes(x = x , y = y, color = id))
+  }
+  
+  sim_curves <- rbind(curve1, curve2, curve3) %>%
+    group_by(id)
+  truth_curve <- curve4 %>% 
+    group_by(id)
+  
+  
+  
+  # all
+  cs4 <- simulation_based_conformal4(truth_grouped_df = truth_curve,
+                                       simulations_grouped_df = sim_curves,
+                                       data_column_names = c("x", "y"),
+                                       number_points = Inf,
+                                       .to_simplex = F, 
+                                       .use_frac = T,
+                                       .small_size_mode_cluster = Inf,
+                                       .sigma_string = "85%",
+                                       verbose = F)
+  
+  for (i in 1:4){ # make sure this makes sense...
+    min_dist_for_coverage4 <- min((as.matrix(curve4[,1:2])-as.matrix(curve2[,1:2]))^2 %>% rowSums() %>% sqrt())
+    max_coverage_radius <- cs4$tm_radius %>% sapply(function(l) max(l[[1]]$dist_mat[1:3,3])) 
+    testthat::expect_true(all(max_coverage_radius<= rep(min_dist_for_coverage4,4)))
+    testthat::expect_equal(cs4$conformal_score[[i]]$containment_val, 0)
+  }
+  
+  curve4.1 <- curve1 %>% mutate(id = "4")
+  curve4.1$index <- curve4.1$x > 12.5
+  curve4.1$x <- curve4.1$x + (sqrt(2)*8/9) * c(-1,1)[curve4.1$index+1]
+  curve4.1$y <- curve4.1$y + (sqrt(2)*8/9) * c(1,-1)[curve4.1$index+1]
+  curve4.1 <- curve4.1 %>% select(-index)
+  
+  if (FALSE){ # visualize
+    all_curves <- rbind(curve1, curve2, curve3, curve4.1)
+    all_curves %>% ggplot() +
+      geom_line(aes(x = x , y = y, color = id))
+  }
+  
+  sim_curves <- rbind(curve1, curve2, curve3) %>%
+    group_by(id)
+  truth_curve <- curve4.1 %>% 
+    group_by(id)
+  
+  # all
+  cs4.1 <- simulation_based_conformal4(truth_grouped_df = truth_curve,
+                                     simulations_grouped_df = sim_curves,
+                                     data_column_names = c("x", "y"),
+                                     number_points = Inf,
+                                     .to_simplex = F, 
+                                     .use_frac = T,
+                                     .small_size_mode_cluster = Inf,
+                                     .sigma_string = "85%",
+                                     verbose = F)
+  min_dist_for_coverage4.1 <- min((as.matrix(curve4.1[,1:2])-as.matrix(curve2[,1:2]))^2 %>% rowSums() %>% sqrt())
+  max_coverage_radius <- cs4.1$tm_radius %>% sapply(function(l) max(l[[1]]$dist_mat[1:3,3])) 
+  testthat::expect_equivalent(max_coverage_radius < min_dist_for_coverage4.1, c(T,T,F,F))  
+  for (i in 1:2){
+    testthat::expect_equal(cs4.1$conformal_score[[i]]$containment_val, 0)
+  }
+  for (i in 3:4){
+    testthat::expect_equal(cs4.1$conformal_score[[i]]$containment_val, 1)
+  }
+  
+  # expect messages about an individual mode
+  testthat::expect_message(simulation_based_conformal4(truth_grouped_df = truth_curve,
+                                                       simulations_grouped_df = sim_curves,
+                                                       data_column_names = c("x", "y"),
+                                                       number_points = Inf,
+                                                       .to_simplex = F, 
+                                                       .use_frac = T,
+                                                       .small_size_mode_cluster = Inf,
+                                                       .sigma_string = "35%",
+                                                       verbose = F))
+  
+  
+  
+  for (. in 1:5){
+    cs1 <- simulation_based_conformal4(truth_grouped_df = curve1 %>% group_by(id),
+                                         simulations_grouped_df = sim_curves,
+                                         data_column_names = c("x", "y"),
+                                       number_points = Inf,
+                                       .use_frac = T,
+                                       .small_size_mode_cluster = Inf,
+                                       .sigma_string = "85%",
+                                         .to_simplex = F, 
+                                         verbose = F)
+    for (i in 1:2){
+      testthat::expect_equal(cs1$conformal_score[[i]]$containment_val, 3) # shouldn't be effected by random ordering...
+    }
+    for (i in 3:4){ # varying radius has 0 width for first step...
+      testthat::expect_equal(cs1$conformal_score[[i]]$containment_val, 2)
+    }
+  }
+  
+  curve3.5 <- curve1 %>%
+    mutate(x = x - 1.5 * sqrt(2)/2,
+           y = y + 1.5 * sqrt(2)/2,
+           id = "3.5")
+  
+  if (F){
+    sim_curves %>% 
+      rbind(curve3.5) %>% 
+      ggplot(aes(x = x,y=y,color = id)) +
+      geom_line()
+  }  
+  
+  for (i in 1:5){
+    cs1.5 <- simulation_based_conformal4(truth_grouped_df = curve3.5 %>% group_by(id),
+                                         simulations_grouped_df = sim_curves,
+                                         data_column_names = c("x", "y"),
+                                         number_points = Inf,
+                                         .use_frac = T,
+                                         .small_size_mode_cluster = Inf,
+                                         .sigma_string = "85%",
+                                         .to_simplex = F, 
+                                         verbose = F)
+    testthat::expect_true(cs1.5$conformal_score[[1]]$containment_val == 2)
+  }
+  
+  curve3.5.1 <- curve1 %>%
+    mutate(x = x + 1.5 * sqrt(2)/2,
+           y = y - 1.5 * sqrt(2)/2,
+           id = "3.5.1")
+  
+  if (F){
+    sim_curves %>% 
+      rbind(curve3.5.1) %>% 
+      ggplot(aes(x = x,y=y,color = id)) +
+      geom_line()
+  }  
+  
+  for (i in 1:5){
+    cs3.5.1 <- simulation_based_conformal4(truth_grouped_df = curve3.5.1 %>% group_by(id),
+                                         simulations_grouped_df = sim_curves,
+                                         data_column_names = c("x", "y"),
+                                         number_points = Inf,
+                                         .use_frac = T,
+                                         .small_size_mode_cluster = Inf,
+                                         .sigma_string = "85%",
+                                         .to_simplex = F, 
+                                         verbose = F)
+    testthat::expect_true(cs3.5.1$conformal_score[[1]]$containment_val == 1)
+  }  
 })
 
 testthat::test_that("test compression_and_sigma_estimate", {

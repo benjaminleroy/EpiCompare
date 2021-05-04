@@ -135,39 +135,79 @@ coverage_down_list <- function(data_list,
     stop("data.frames in data_list are not the same length.")
   }
   
-  if (verbose){
-    pb <- progress::progress_bar$new(
-      format = "calculating minimum coverage [:bar] :percent eta: :eta",
-      total = n_obs, clear = FALSE, width = 60)
-  }
-  min_cover_vec <- rep(0, n_obs)
-  inner_min_dist_mat <- matrix(rep(Inf, n_obs*n_of_obs), ncol = n_of_obs)
   
   dist_mat <- matrix(rep(NA, n_obs^2), ncol = n_obs)
   dist_mat[1,1] <- 0
   
-  for (r_idx in 2:n_obs){
-    new_point_info <- inner_min_dist_per_point(data_list[[r_idx]], 
-                                               data_list[1:(r_idx-1)], {{e_cols}})
-    inner_min_dist_mat[1:(r_idx-1),] <- array(
-      c(inner_min_dist_mat[1:(r_idx-1),], new_point_info$nn_info_l),
-      dim = c(nrow(new_point_info$nn_info_l),
-              ncol(new_point_info$nn_info_l),
-              2)) %>% 
-      apply(1:2, min)
-    inner_min_dist_mat[r_idx,] <- new_point_info$nn_info_current
-    
-    min_cover_vec[r_idx] <- max(inner_min_dist_mat[1:r_idx,]) # same as double max
-    
-    dist_mat[1:(r_idx-1), r_idx] <- sapply(dist_mat[1:(r_idx-1), r_idx-1],
-                                           function(x) max(c(x, min_cover_vec[r_idx])))
-    dist_mat[r_idx, r_idx] <- min_cover_vec[r_idx]
-    
-    
-    if (verbose) {
-      pb$tick()
+  min_cover_vec <- rep(0, n_obs)
+  
+  if (n_obs > 1){
+    if (verbose){
+      pb <- progress::progress_bar$new(
+        format = "calculating minimum coverage [:bar] :percent eta: :eta",
+        total = n_obs, clear = FALSE, width = 60)
     }
+    inner_min_dist_mat <- matrix(rep(Inf, n_obs*n_of_obs), ncol = n_of_obs)
+    
+    if (!pryr::is_promise(e_cols)){
+      .e_cols_string <- inherits(e_cols, "character")
+    } else {
+      .e_cols_string <- F
+    }
+    
+    if (.e_cols_string){
+      for (r_idx in 2:n_obs){
+        new_point_info <- inner_min_dist_per_point(data_list[[r_idx]], 
+                                                   data_list[1:(r_idx-1)], e_cols,
+                                                   .e_cols_string = .e_cols_string)
+        inner_min_dist_mat[1:(r_idx-1),] <- array(
+          c(inner_min_dist_mat[1:(r_idx-1),], new_point_info$nn_info_l),
+          dim = c(nrow(new_point_info$nn_info_l),
+                  ncol(new_point_info$nn_info_l),
+                  2)) %>% 
+          apply(1:2, min)
+        inner_min_dist_mat[r_idx,] <- new_point_info$nn_info_current
+        
+        min_cover_vec[r_idx] <- max(inner_min_dist_mat[1:r_idx,]) # same as double max
+        
+        dist_mat[1:(r_idx-1), r_idx] <- sapply(dist_mat[1:(r_idx-1), r_idx-1],
+                                               function(x) max(c(x, min_cover_vec[r_idx])))
+        dist_mat[r_idx, r_idx] <- min_cover_vec[r_idx]
+        
+        
+        if (verbose) {
+          pb$tick()
+        }
+      }
+    } else {
+      for (r_idx in 2:n_obs){
+        new_point_info <- inner_min_dist_per_point(data_list[[r_idx]], 
+                                                   data_list[1:(r_idx-1)], {{e_cols}},
+                                                   .e_cols_string = .e_cols_string)
+        inner_min_dist_mat[1:(r_idx-1),] <- array(
+          c(inner_min_dist_mat[1:(r_idx-1),], new_point_info$nn_info_l),
+          dim = c(nrow(new_point_info$nn_info_l),
+                  ncol(new_point_info$nn_info_l),
+                  2)) %>% 
+          apply(1:2, min)
+        inner_min_dist_mat[r_idx,] <- new_point_info$nn_info_current
+        
+        min_cover_vec[r_idx] <- max(inner_min_dist_mat[1:r_idx,]) # same as double max
+        
+        dist_mat[1:(r_idx-1), r_idx] <- sapply(dist_mat[1:(r_idx-1), r_idx-1],
+                                               function(x) max(c(x, min_cover_vec[r_idx])))
+        dist_mat[r_idx, r_idx] <- min_cover_vec[r_idx]
+        
+        
+        if (verbose) {
+          pb$tick()
+        }
+      }
+    }
+  } else {
+    message("A mode cluster has only a single element.")
   }
+  
   return(list(min_cover_vec = min_cover_vec, dist_mat = dist_mat))
   
 }
@@ -197,7 +237,6 @@ coverage_down_mlist <- function(data_ll,
                                 names_df = NULL,
                                 .td_out = F,
                                 verbose = T){
-  
   if (!(all(sapply(data_ll, function(x) inherits(x, "data.frame"))))){
     stop("data_ll must be a list of data.frames")
   }
@@ -222,9 +261,16 @@ coverage_down_mlist <- function(data_ll,
   l_dist_mat <- list()
   t <- 1
   
+
+  
   for (order_vec in g_order_ll){
-    coverd_info[[t]] <- coverage_down_list(data_ll[order_vec], {{e_cols}},
-                                           verbose = verbose)
+    if (pryr::is_promise(e_cols)){
+      coverd_info[[t]] <- coverage_down_list(data_ll[order_vec], {{e_cols}},
+                                             verbose = verbose)
+    } else {
+      coverd_info[[t]] <- coverage_down_list(data_ll[order_vec], e_cols,
+                                             verbose = verbose)
+    }
     l_min_cover_vec[[t]] <- coverd_info[[t]]$min_cover_vec
     l_dist_mat[[t]] <- coverd_info[[t]]$dist_mat
     
@@ -271,23 +317,39 @@ coverage_down_mlist <- function(data_ll,
 #' @param df new path
 #' @param df_list list of old paths (ordered)
 #' @param e_cols columns associated with location of path points
+#' @param .e_cols_string boolean if e_cols is a string (not a promis)
 #'
 #' @return list of nn_info_l (update relative to single new path) and 
 #' nn_info_current 
 #' @export
-inner_min_dist_per_point <- function(df, df_list, e_cols){
+inner_min_dist_per_point <- function(df, df_list, e_cols, .e_cols_string = F){
   nn_info_l <- matrix(NA, ncol = nrow(df), nrow = length(df_list))
   nn_info_r <- matrix(NA, ncol = nrow(df), nrow = length(df_list))
   
-  for (r_idx in 1:length(df_list)){
-    nn_info_l[r_idx,] <- RANN::nn2(data = df %>% dplyr::select({{e_cols}}),
-                                   query = df_list[[r_idx]] %>% 
-                                     dplyr::select({{e_cols}}),
-                                   k = 1, treetype = "kd")$nn.dists
-    nn_info_r[r_idx,] <- RANN::nn2(query = df %>% dplyr::select({{e_cols}}),
-                                   data = df_list[[r_idx]] %>% 
-                                     dplyr::select({{e_cols}}),
-                                   k = 1, treetype = "kd")$nn.dists
+  if (!.e_cols_string){
+    for (r_idx in 1:length(df_list)){
+      nn_info_l[r_idx,] <- RANN::nn2(data = df %>% dplyr::select({{e_cols}}),
+                                     query = df_list[[r_idx]] %>% 
+                                       dplyr::select({{e_cols}}),
+                                     k = 1, treetype = "kd")$nn.dists
+      nn_info_r[r_idx,] <- RANN::nn2(query = df %>% dplyr::select({{e_cols}}),
+                                     data = df_list[[r_idx]] %>% 
+                                       dplyr::select({{e_cols}}),
+                                     k = 1, treetype = "kd")$nn.dists
+    }
+  } else {
+    for (r_idx in 1:length(df_list)){
+      nn_info_l[r_idx,] <- RANN::nn2(data = df %>% 
+                                       dplyr::select(dplyr::one_of(e_cols)),
+                                     query = df_list[[r_idx]] %>% 
+                                       dplyr::select(dplyr::one_of(e_cols)),
+                                     k = 1, treetype = "kd")$nn.dists
+      nn_info_r[r_idx,] <- RANN::nn2(query = df %>% 
+                                       dplyr::select(dplyr::one_of(e_cols)),
+                                     data = df_list[[r_idx]] %>% 
+                                       dplyr::select(dplyr::one_of(e_cols)),
+                                     k = 1, treetype = "kd")$nn.dists
+    }
   }
   nn_info_rr <- apply(nn_info_r, 2, min)
   
@@ -308,8 +370,9 @@ inner_min_dist_per_point <- function(df, df_list, e_cols){
 #' @return a list of 2 objects. The first is a data frame defined by the joining
 #' of the previous data frames and additional columns for \code{ranking} of 
 #' their psuedo_densities and for \code{group_ranking} (ranking conditional on 
-#' mode group). The second element of the list is a lists of indicies associated
-#' with the \code{group_ranking} making to object interest.
+#' mode group). The second element of the list is a lists of indices (associated
+#' with the rows in the \code{psuedo_density_df}) these indices tell us the 
+#' inner group order from highest psuedo-density to lowest.
 #' @export
 #' 
 inner_expanding_info <- function(psuedo_density_df, mode_grouping){
@@ -326,7 +389,7 @@ inner_expanding_info <- function(psuedo_density_df, mode_grouping){
   list_split <- both %>% tibble::rownames_to_column() %>% 
     dplyr::group_by(.data$groupings) %>%
     dplyr::group_split() %>% 
-    lapply(function(df) as.numeric(df$rowname[df$group_ranking]))
+    lapply(function(df) as.numeric(df$rowname[order(df$group_ranking)]))
   
   return(list(both, list_split))
 }
