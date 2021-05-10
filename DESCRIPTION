@@ -30,6 +30,7 @@ Imports:
     ks,
     magrittr,
     purrr,
+    pryr,
     RANN,
     raster,
     Rcpp,

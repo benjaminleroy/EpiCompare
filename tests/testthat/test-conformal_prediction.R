@@ -1431,3 +1431,45 @@ testthat::test_that("test get_delta_nn", {
 })
 
 
+
+testthat::test_that("test cumMax, basic", {
+  v1 <- inner_cumMax(1:10)
+  testthat::expect_equal(v1, 1:10)
+  v2 <- inner_cumMax(c(1,3,4,5,3,2,5,1,7,8,8,6))
+  testthat::expect_equal(v2, c(1,3:5,rep(5,4),7,rep(8,3)))
+  v3 <- inner_cumMax(c(-1,3,-4,5,3,-2,5,1,7,8,-8,6))
+  testthat::expect_equal(v3, c(-1,rep(3,2),rep(5,5),7,rep(8,3)))
+})
+
+
+testthat::test_that("coverage_down_update, basic", {
+  
+  min_vec <- c(4,5,13,12)
+  dist_mat <- matrix(1:16, nrow = 4)
+  dist_mat[lower.tri(dist_mat)] <- NA
+  
+  
+  a <- coverage_down_update(list(list(min_cover_vec = min_vec,
+                                      dist_mat = dist_mat)),
+                            top_percent_cut = "50%")
+  
+  testthat::expect_equal(a[[1]]$dist_mat,
+                         matrix(c( 5, 5,13,13,
+                                   NA, 5,13,13,
+                                   NA,NA,11,15,
+                                   NA,NA,NA,16),
+                                byrow =T, nrow= 4))
+  
+  b <- coverage_down_update(list(list(min_cover_vec = min_vec,
+                                      dist_mat = dist_mat)),
+                            top_percent_cut = "20%")
+  
+  testthat::expect_equal(b[[1]]$dist_mat,
+                         matrix(c( 4, 5,13,13,
+                                   NA, 6,10,14,
+                                   NA,NA,11,15,
+                                   NA,NA,NA,16),
+                                byrow =T, nrow= 4))
+  
+})
+

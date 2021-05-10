@@ -2,11 +2,11 @@
 # expected run time 1.75 hours (shoot for 2:30)
 
 input_args <- as.numeric(commandArgs(trailingOnly=TRUE))
-test_idx <- input_args[1]
+test_idx <- 50#input_args[1]
 
 # global parameters ----------
 
-n_simulations <- input_args[2]
+n_simulations <- 1000#input_args[2]
 n_sims_containment <- 300
 number_points <- 150
 
@@ -20,6 +20,8 @@ library(tidyr)
 library(devtools)
 
 # load 
+user_name <- Sys.info()["user"]
+
 if (user_name == "benjaminleroy"){ # personal computer
   if (getwd() != "/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination") {
     setwd("/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination")
@@ -44,7 +46,7 @@ test_set_r0 <- tibble(x = seq(0,1, length.out = n_test_grid))
 
 start_time <- Sys.time()
 
-x_inner <- test_set_r0$x[text_idx]
+x_inner <- test_set_r0$x[test_idx]
 
                                      
 # sim_df filaments ----
@@ -125,14 +127,13 @@ truth_paths <- data.frame(x_original = as.numeric(rep(NA, number_points*n_sims_c
 
 
 
-
 for (r_idx in 1:n_sims_containment){
  inner_info <- inner_truth_df[r_idx, ]
  global_r_idx <- ((r_idx-1)* number_points + 1):(r_idx* number_points)
  
  inner_paths <- simulate_SIR_agents(n_sims = 1,
                                     n_time_steps = 500,
-                                    inner_truth_df$beta, inner_truth_df$gamma,
+                                    inner_info$beta, inner_info$gamma,
                                     init_SIR = c(950,50,0)) %>%
    agents_to_aggregate(states = c("tI", "tR")) %>%
    as.data.frame() %>%
@@ -144,12 +145,12 @@ for (r_idx in 1:n_sims_containment){
    dplyr::ungroup() %>% dplyr::select(-idx)
  
  
- inner_df <- cbind(x_original = inner_truth_df$x[r_idx],
-                   R0 = inner_truth_df$R0[r_idx],
-                   beta = inner_truth_df$beta[r_idx],
-                   gamma = inner_truth_df$gamma[r_idx],
+ inner_df <- cbind(x_original = inner_info$x,
+                   R0 = inner_info$R0,
+                   beta = inner_info$beta,
+                   gamma = inner_info$gamma,
                    idx = r_idx,
-                   set_idx = inner_truth_df$idx[r_idx],
+                   set_idx = inner_info$idx,
                    inner_paths)
  
  truth_paths[global_r_idx, ] <- inner_df
@@ -158,7 +159,17 @@ for (r_idx in 1:n_sims_containment){
 truth_paths <- truth_paths %>% 
  dplyr::group_by(x_original, R0, beta, gamma, idx, set_idx)
 
-                                     
+           
+if (F){
+   sim_paths %>% 
+      mutate(obs = "sim") %>% 
+      rbind(truth_paths %>%
+               mutate(obs = "truth")) %>%
+      ggplot() +
+      geom_path(aes(x=x,y=y, group = set_idx, 
+                    color = obs), alpha = .1) +
+      facet_wrap(obs~.)
+}                          
 
 conformal_score <- simulation_based_conformal4(truth_grouped_df = truth_paths,
                                                simulations_grouped_df = sim_paths,
@@ -166,7 +177,7 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = truth_paths,
                                                number_points = Inf,
                                                .to_simplex = F,
                                                verbose = F,
-                                               return_min = T)                                   
+                                               return_min = F)                                   
                                      
                                   
 elapsed_time <- Sys.time() - start_time

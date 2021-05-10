@@ -109,7 +109,7 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = inner_truth_df
                                               number_points = Inf,
                                               .to_simplex = F,
                                               verbose = F,
-                                              return_min = T)
+                                              return_min = F)
 elapsed_time <- Sys.time() - start
 
 

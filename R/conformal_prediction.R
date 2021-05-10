@@ -309,6 +309,69 @@ coverage_down_mlist <- function(data_ll,
   
 }
 
+#' update coverage_down information
+#'
+#' @param cdm_list list of lists of coverage_down information 
+#' (\code{min_cover_vec} and \code{dist_mat})
+#' @param top_percent_cut string with percent of the highest points to give the 
+#' same radius as the minimum spanning value at the percent.
+#'
+#' @return update coverage_down information
+#' @export
+coverage_down_update <- function(cdm_list,
+                                 top_percent_cut = "15%"){
+  percentage_inner <- check_character_percent(top_percent_cut, 
+                                              "top_percent_cut")
+  
+  cdm_list_new <- list()
+  for (g_idx in 1:length(cdm_list)){
+    inner_cdm <- cdm_list[[g_idx]]
+    min_cover_vec <- inner_cdm$min_cover_vec
+    dist_mat <- inner_cdm$dist_mat
+    n_dist_mat <- nrow(dist_mat)
+    
+    top_count <- ceiling(percentage_inner * n_dist_mat)
+    
+    start_val <- min_cover_vec[top_count]
+    
+    update_loc <- matrix(F, nrow = n_dist_mat, ncol = n_dist_mat)
+    update_loc[upper.tri(update_loc, diag = T)] <- T
+    update_loc[,(top_count+1):n_dist_mat] <- F
+    
+    dist_mat[update_loc] <- start_val
+    
+    cMax_vec <- inner_cumMax(min_cover_vec[top_count:n_dist_mat])
+    dist_mat[1:top_count, (top_count+1):n_dist_mat] <- matrix(
+      rep(cMax_vec[2:length(cMax_vec)], each = top_count),
+      nrow = top_count)
+    
+    cdm_list_new[[g_idx]] <- list(min_cover_vec = min_cover_vec,
+                                  dist_mat = dist_mat)
+  }
+  
+  return(cdm_list_new)
+}
+
+
+#' cumulative max of vector
+#'
+#' @param x numerical vector (not checked)
+#'
+#' @return cumulative maximum of vector
+inner_cumMax <- function(x){
+  n <- length(x)
+  cMvec <-rep(x[1], n)
+  for (x_idx in 2:n){
+    if (x[x_idx] > cMvec[x_idx - 1]){
+      cMvec[x_idx] <- x[x_idx]
+    } else {
+      cMvec[x_idx] <- cMvec[x_idx - 1]
+    }
+  }
+  return(cMvec)
+}
+
+
 
 #' calculate the minimum coverage needed for each point in a path relative to 
 #' addition of the new path (and the mininum coverage for each point in new 
@@ -525,8 +588,10 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
       dplyr::group_by(dplyr::across(tidyselect::one_of(group_names))) %>%
       dplyr::summarize(containment_val = max(.data$number_contained), .groups = "keep") 
     
-    simulation_info_inner <- rbind((simulation_info_df %>% dplyr::ungroup() %>% 
-      dplyr::select(.data$ranking, .data$group_ranking))[inner_ids,],
+    simulation_info_inner <- rbind((simulation_info_df[inner_ids,] %>% 
+                                      filter(groupings == g_idx) %>% 
+                                      dplyr::ungroup() %>% 
+      dplyr::select(.data$ranking, .data$group_ranking)),
       data.frame(ranking = n_draws+1, group_ranking = n_draws+1))
     
     overall_score <- score_per_mode %>% 
@@ -537,6 +602,7 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
     
     
   }
+  
   # combining across modes
   moverall_info <- do.call(rbind,overall_info) %>%
     dplyr::group_by(dplyr::across(tidyselect::one_of(group_names))) %>% 
