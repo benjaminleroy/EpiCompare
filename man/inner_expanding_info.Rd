@@ -18,8 +18,9 @@ mode clustering index (in column called \code{groupings})}
 a list of 2 objects. The first is a data frame defined by the joining
 of the previous data frames and additional columns for \code{ranking} of 
 their psuedo_densities and for \code{group_ranking} (ranking conditional on 
-mode group). The second element of the list is a lists of indicies associated
-with the \code{group_ranking} making to object interest.
+mode group). The second element of the list is a lists of indices (associated
+with the rows in the \code{psuedo_density_df}) these indices tell us the 
+inner group order from highest psuedo-density to lowest.
 }
 \description{
 Ranking ties are randomly assigned index values

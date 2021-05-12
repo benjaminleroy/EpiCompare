@@ -74,3 +74,21 @@ psuedo_density_mode_cluster <- function(X_list, G_list, sigma, eps = 1E-06, maxT
     .Call('_EpiCompare_psuedo_density_mode_cluster', PACKAGE = 'EpiCompare', X_list, G_list, sigma, eps, maxT, verbose, usefrac)
 }
 
+#' psuedo density walking towards the mode
+#' 
+#' @param X_list list of matrices (same size), these define the psuedo density
+#' @param G_list list of matrices to walk up (can be the same as X_list, but 
+#' need not be).
+#' @param sigma double, sigma for distance psuedo density calculation
+#' @param eps double, distance between iterative steps when to stop progressing 
+#' (aka stop at a mode)
+#'@param maxT int, max number of interations
+#'@param verbose boolean, if we should use a progress bar
+#'@param usefrac boolean, if we should calculate the distance relative to this 
+#'scaling (should also impact the earlier calculation of sigma)
+#'
+#'@return Updated step of G_list
+psuedo_density_mode_cluster2 <- function(X_list, G_list, sigma, eps = 1E-06, maxT = 10L, verbose = TRUE, usefrac = FALSE) {
+    .Call('_EpiCompare_psuedo_density_mode_cluster2', PACKAGE = 'EpiCompare', X_list, G_list, sigma, eps, maxT, verbose, usefrac)
+}
+

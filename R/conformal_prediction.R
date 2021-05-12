@@ -55,6 +55,64 @@ functional_psuedo_density_mode_cluster <- function(X_list, G_list=X_list,
 }
 
 
+#' Interatively apply the mean-shift algorithm to filamental objects
+#'
+#' Wrapper of C++ function `psuedo_density_mode_cluster2``
+#'
+#' @param X_list list of filamental objects (data frames or matrices) 
+#' that define the psuedo-density estimation
+#' @param G_list another list of filament objects (data frames or matrices) 
+#' that we will "walk" up to their modes.
+#' @param sigma scalar, scale value for the distances between observations
+#' @param eps scalar, if difference between steps is less than this - treat as 
+#' if the point has converged
+#' @param maxT integer, max number of iterations of the algorithm
+#' @param verbose boolean, if we should show progress (done with a  C++ 
+#' based progressbar)
+#' @param usefrac boolean, if the distance should be weighted by the number
+#' of points in the filament.
+#'
+#' @return Final step of points in the \cite{G_list} (hopefully the associated
+#' modes).
+#' @export
+functional_psuedo_density_mode_cluster2 <- function(X_list, G_list=X_list, 
+                                                   sigma,
+                                                   eps = 1e-05,  
+                                                   maxT = 10,
+                                                   verbose = TRUE,
+                                                   usefrac = FALSE){
+  # wrapper for psuedo_density_mode_cluster C++ function 
+  # (some preliminary checks)
+  # --
+  X_list <- lapply(X_list, as.matrix)
+  G_list <- lapply(X_list, as.matrix)
+  
+  distinct_size_X <- X_list %>% sapply(dim) %>% t() %>% data.frame() %>% 
+    dplyr::distinct() 
+  assertthat::assert_that(nrow(distinct_size_X) == 1, 
+                          msg = "all matrices in X_list must be the same size.")
+  distinct_size_G <- G_list %>% sapply(dim) %>% t() %>% data.frame() %>% 
+    dplyr::distinct()
+  assertthat::assert_that(nrow(distinct_size_G) == 1, 
+                          msg = "all matrices in G_list must be the same size.")
+  
+  assertthat::assert_that(all(distinct_size_X == distinct_size_G),
+                          msg = "all matrices in G_list and X_list must be the same size.")
+  
+  # running code
+  out <- psuedo_density_mode_cluster2(X_list = X_list,
+                                     G_list = G_list,
+                                     sigma = sigma,
+                                     eps = eps,
+                                     maxT = maxT,
+                                     verbose = verbose,
+                                     usefrac = usefrac)
+  
+  return(out)
+}
+
+
+
 #' Find mode clusters of filament objects 
 #'
 #' Wrapper of C++ function `psuedo_density_mode_cluster`` plus some cluster
@@ -452,7 +510,7 @@ inner_expanding_info <- function(psuedo_density_df, mode_grouping){
   list_split <- both %>% tibble::rownames_to_column() %>% 
     dplyr::group_by(.data$groupings) %>%
     dplyr::group_split() %>% 
-    lapply(function(df) as.numeric(df$rowname[order(df$group_ranking)]))
+    lapply(function(df) as.numeric(df$rowname)[order(df$group_ranking)])
   
   return(list(both, list_split))
 }
@@ -468,11 +526,12 @@ inner_expanding_info <- function(psuedo_density_df, mode_grouping){
 #' @param data_column_names columns of \code{df_row_group} and 
 #' \code{simulations_group_df} that correspond to the output space.
 #' @param simulation_info_df a dataframe with information of each simulation's
-#' psuedo-density estimate, mode clustering, ranking of psuedo-density(within 
+#' psuedo-density estimate, mode clustering, ranking of psuedo-density (within 
 #' cluster and overall). See \code{inner_expanding_info} for expected structure.
 #' @param list_radius_info list of lists of radius information per each mode.
 #' @param list_grouping_id list of vectors of indices (grouped by mode cluster)
-#' and ordered by psuedo-density values.
+#' and ordered by psuedo-density values. These values are relative to the row
+#' indices in simulation_info_df.
 #' @param verbose boolean, if progress should be tracked with a progress bar
 #'
 #' @return data.frame with a row for each filament in \code{df_row_group} with a 
@@ -520,7 +579,7 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
       total = n_draws,
       clear = FALSE, width = 60)
   }
-  
+  browser()
   overall_info <- list()
   for (g_idx in 1:n_groups){
     inner_ids <- list_grouping_id[[g_idx]]
@@ -538,6 +597,7 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
       pd_inner <- simulation_info_df[sim_idx,]
       df_col <- simulations_group_df %>% dplyr::inner_join(pd_inner,
                                                            by = group_names_sim)
+      
       if (all(nn_contained)){
         break # then don't need to check if they're contained anymore
       }
@@ -579,7 +639,6 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
       current_idx <- current_idx + 1
       
     }
-    
     all_info_df <- all_info_df %>%
       dplyr::mutate(number_contained = nn_containment_num)
     
@@ -604,7 +663,7 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
   }
   
   # combining across modes
-  moverall_info <- do.call(rbind,overall_info) %>%
+  moverall_info <- do.call(rbind, overall_info) %>%
     dplyr::group_by(dplyr::across(tidyselect::one_of(group_names))) %>% 
     dplyr::summarize(containment_val = n_draws+1 - min(.data$ranking), .groups = "keep") 
   
@@ -1026,7 +1085,7 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
         simulation_info_df <- simulation_info_out[[1]]
         ordering_list <- simulation_info_out[[2]]
       } else {
-        #browser()
+        
         c_s_out <- compression_and_sigma_estimate(sim_grouped_df = simulations_group_df_inner,
                                                   data_columns = data_column_names,
                                                   usefrac = .use_frac,
@@ -1405,6 +1464,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                  vary_nm = tm_radius_vary_nm),
                 truth_df_inner = truth_df_inner,
                 simulations_group_df_inner = simulations_group_df_inner,
+                ordering_list = ordering_list,
                 parameters = c("mm_delta_prop" = .2,
                                "sigma_percentage" = percentage_inner,
                                "filament_num_points" = number_points)))

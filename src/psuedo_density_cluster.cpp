@@ -232,3 +232,93 @@ List psuedo_density_mode_cluster(List X_list, List G_list, double sigma,
   return(G_list_out);
 }
 
+
+
+//' psuedo density walking towards the mode
+//' 
+//' @param X_list list of matrices (same size), these define the psuedo density
+//' @param G_list list of matrices to walk up (can be the same as X_list, but 
+//' need not be).
+//' @param sigma double, sigma for distance psuedo density calculation
+//' @param eps double, distance between iterative steps when to stop progressing 
+//' (aka stop at a mode)
+//'@param maxT int, max number of interations
+//'@param verbose boolean, if we should use a progress bar
+//'@param usefrac boolean, if we should calculate the distance relative to this 
+//'scaling (should also impact the earlier calculation of sigma)
+//'
+//'@return Updated step of G_list
+// [[Rcpp::export]]
+List psuedo_density_mode_cluster2(List X_list, List G_list, double sigma,
+                                 double eps = 1E-06, int maxT = 10,
+                                 bool verbose = true, bool usefrac = false) {
+  
+  int n_listX = X_list.size();
+  int n_listG = G_list.size();
+  int t = 0;
+  
+  List G_list_out(n_listG);
+  
+  Progress p(maxT, verbose);
+  
+  
+  NumericVector error (n_listG, 1E08);  // initial error = massive error
+  
+  double max_error = 1E08;
+  
+  while (max_error > eps && t < maxT){
+    if (Progress::check_abort() )
+      return -1.0;
+    
+    for (int g_index = 0; g_index < n_listG; ++g_index){
+      if (error[g_index] > eps){
+        
+        NumericVector dist_vals(n_listX);
+        if (t == 0) {
+          dist_vals = inner_dist_density(distvec(G_list[g_index],X_list, usefrac), sigma);
+        } else {
+          dist_vals = inner_dist_density(distvec(G_list_out[g_index],X_list, usefrac), sigma);
+        }
+        
+        double denominator = std::accumulate(dist_vals.begin(), dist_vals.end(), 0.0);
+        
+        if (denominator == 0) {
+          throw std::runtime_error("Error: no distance between a observation in G_list and all observations in X_list > 0.");
+        }
+        
+        NumericMatrix unscaled_new = scalartimesmat(X_list[0],
+                                                    dist_vals[0]);
+        
+        for (int x_index = 1; x_index < n_listX; ++x_index){
+          unscaled_new = addmats(unscaled_new,
+                                 scalartimesmat(X_list[x_index],dist_vals[x_index]));
+        }
+        
+        NumericMatrix tmp = scalartimesmat(unscaled_new, 1.0/denominator);
+        if (t == 0){
+          error[g_index] = difffunction(tmp,G_list[g_index]);
+        } else {
+          error[g_index] = difffunction(tmp,G_list_out[g_index]);
+        }
+        G_list_out[g_index] = tmp;
+      }
+    }
+    p.increment(); 
+    max_error = *std::max_element(error.begin(), error.end());
+    t += 1;
+  }
+  
+  
+  List out(3);
+  if (t < maxT){
+    out[0] = false;
+    out[1] = t;
+    out[2] = G_list_out;
+    return(out);
+  } else {
+    out[0] = true;
+    out[1] = t;
+    out[2] = G_list_out;
+    return(out);
+  }
+}

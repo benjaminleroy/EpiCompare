@@ -107,6 +107,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// psuedo_density_mode_cluster2
+List psuedo_density_mode_cluster2(List X_list, List G_list, double sigma, double eps, int maxT, bool verbose, bool usefrac);
+RcppExport SEXP _EpiCompare_psuedo_density_mode_cluster2(SEXP X_listSEXP, SEXP G_listSEXP, SEXP sigmaSEXP, SEXP epsSEXP, SEXP maxTSEXP, SEXP verboseSEXP, SEXP usefracSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type X_list(X_listSEXP);
+    Rcpp::traits::input_parameter< List >::type G_list(G_listSEXP);
+    Rcpp::traits::input_parameter< double >::type sigma(sigmaSEXP);
+    Rcpp::traits::input_parameter< double >::type eps(epsSEXP);
+    Rcpp::traits::input_parameter< int >::type maxT(maxTSEXP);
+    Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
+    Rcpp::traits::input_parameter< bool >::type usefrac(usefracSEXP);
+    rcpp_result_gen = Rcpp::wrap(psuedo_density_mode_cluster2(X_list, G_list, sigma, eps, maxT, verbose, usefrac));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_EpiCompare_l2filamentdist", (DL_FUNC) &_EpiCompare_l2filamentdist, 2},
@@ -117,6 +134,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_EpiCompare_difffunction", (DL_FUNC) &_EpiCompare_difffunction, 3},
     {"_EpiCompare_inner_dist_density", (DL_FUNC) &_EpiCompare_inner_dist_density, 2},
     {"_EpiCompare_psuedo_density_mode_cluster", (DL_FUNC) &_EpiCompare_psuedo_density_mode_cluster, 7},
+    {"_EpiCompare_psuedo_density_mode_cluster2", (DL_FUNC) &_EpiCompare_psuedo_density_mode_cluster2, 7},
     {NULL, NULL, 0}
 };
 

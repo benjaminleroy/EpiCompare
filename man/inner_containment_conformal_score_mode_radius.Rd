@@ -26,13 +26,14 @@ filaments information}
 \code{simulations_group_df} that correspond to the output space.}
 
 \item{simulation_info_df}{a dataframe with information of each simulation's
-psuedo-density estimate, mode clustering, ranking of psuedo-density(within 
+psuedo-density estimate, mode clustering, ranking of psuedo-density (within 
 cluster and overall). See \code{inner_expanding_info} for expected structure.}
 
 \item{list_radius_info}{list of lists of radius information per each mode.}
 
 \item{list_grouping_id}{list of vectors of indices (grouped by mode cluster)
-and ordered by psuedo-density values.}
+and ordered by psuedo-density values. These values are relative to the row
+indices in simulation_info_df.}
 
 \item{verbose}{boolean, if progress should be tracked with a progress bar}
 }

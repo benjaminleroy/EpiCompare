@@ -6,7 +6,7 @@
 addition of the new path (and the mininum coverage for each point in new 
 path relative to already seen paths)}
 \usage{
-inner_min_dist_per_point(df, df_list, e_cols)
+inner_min_dist_per_point(df, df_list, e_cols, .e_cols_string = F)
 }
 \arguments{
 \item{df}{new path}
@@ -14,6 +14,8 @@ inner_min_dist_per_point(df, df_list, e_cols)
 \item{df_list}{list of old paths (ordered)}
 
 \item{e_cols}{columns associated with location of path points}
+
+\item{.e_cols_string}{boolean if e_cols is a string (not a promis)}
 }
 \value{
 list of nn_info_l (update relative to single new path) and 
