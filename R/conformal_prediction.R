@@ -28,7 +28,7 @@ functional_psuedo_density_mode_cluster <- function(X_list, G_list=X_list,
   # (some preliminary checks)
   # --
   X_list <- lapply(X_list, as.matrix)
-  G_list <- lapply(X_list, as.matrix)
+  G_list <- lapply(G_list, as.matrix)
   
   distinct_size_X <- X_list %>% sapply(dim) %>% t() %>% data.frame() %>% 
     dplyr::distinct() 
@@ -85,7 +85,7 @@ functional_psuedo_density_mode_cluster2 <- function(X_list, G_list=X_list,
   # (some preliminary checks)
   # --
   X_list <- lapply(X_list, as.matrix)
-  G_list <- lapply(X_list, as.matrix)
+  G_list <- lapply(G_list, as.matrix)
   
   distinct_size_X <- X_list %>% sapply(dim) %>% t() %>% data.frame() %>% 
     dplyr::distinct() 
@@ -579,7 +579,6 @@ inner_containment_conformal_score_mode_radius <- function(df_row_group,
       total = n_draws,
       clear = FALSE, width = 60)
   }
-  browser()
   overall_info <- list()
   for (g_idx in 1:n_groups){
     inner_ids <- list_grouping_id[[g_idx]]
