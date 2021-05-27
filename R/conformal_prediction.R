@@ -1220,6 +1220,8 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' the sigma (e.g. \code{"30\%"})
 #' @param .diff_eps float, the error allows between mode clustered final steps
 #' to still be counted as the same mode.
+#' @param .eps float, when to stop the model clustering (if maxT doesn't stop it
+#' first)
 #' @param verbose boolean, be verbose about progression
 #' @param return_min boolean, if list of information returned is mimimum (for slurm)
 #'
@@ -1234,6 +1236,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                         .maxT = 50,
                                         .sigma_string = "35%",
                                         .diff_eps = 1e-06,
+                                        .eps = 1e-06,
                                         verbose = FALSE,
                                         return_min = FALSE){
   # "record keeping" (keeping track of keys for sims and new obs)
@@ -1350,6 +1353,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
       out_groups <- mode_clustering(g_list = sim_list, g_names = sim_names,
                                     position = which(names(sim_list[[1]]) %in% data_column_names),
                                     sigma = sigma_val, maxT = .maxT,
+                                    eps = .eps,
                                     usefrac = .use_frac, diff_eps = .diff_eps,
                                     verbose = verbose)
       
@@ -1370,6 +1374,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
       out_groups <- mode_clustering(g_list = c_g_list,g_names = c_g_names,
                                     position = c_position,
                                     sigma = c_s_out$sigma, maxT = .maxT, 
+                                    eps = .eps,
                                     usefrac = .use_frac,diff_eps = .diff_eps,
                                     verbose = verbose)
       

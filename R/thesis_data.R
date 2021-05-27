@@ -20,7 +20,7 @@ data_generation <- function(x_inner, n_sims_containment = 1000,
     1/7*simulationBands::lei_wasserman_data_conditional_simulate(2*(x-.5),
                                                                  n =1)[[1]]$sim+2})
   inner_truth_df <- inner_truth_df %>%
-    mutate(beta = .1,
+    dplyr::mutate(beta = .1,
            gamma = .1/R0,
            idx = paste0("inner_truth", 1:n_sims_containment))
   

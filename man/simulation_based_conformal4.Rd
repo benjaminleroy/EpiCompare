@@ -16,6 +16,7 @@ simulation_based_conformal4(
   .maxT = 50,
   .sigma_string = "35\%",
   .diff_eps = 1e-06,
+  .eps = 1e-06,
   verbose = FALSE,
   return_min = FALSE
 )
@@ -51,6 +52,9 @@ the sigma (e.g. \code{"30\%"})}
 
 \item{.diff_eps}{float, the error allows between mode clustered final steps
 to still be counted as the same mode.}
+
+\item{.eps}{float, when to stop the model clustering (if maxT doesn't stop it
+first)}
 
 \item{verbose}{boolean, be verbose about progression}
 

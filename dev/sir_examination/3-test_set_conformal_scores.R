@@ -1,12 +1,12 @@
 # run: Rscript 3-test_set_conformal_scores.R [1-101] 1000
-# expected run time 1.75 hours (shoot for 2:30)
+# expected run time 1.6 hours (shoot for 2:30)
 
 input_args <- as.numeric(commandArgs(trailingOnly=TRUE))
-test_idx <- 50#input_args[1]
+test_idx <- input_args[1]
 
 # global parameters ----------
 
-n_simulations <- 1000#input_args[2]
+n_simulations <- input_args[2]
 n_sims_containment <- 300
 number_points <- 150
 
@@ -15,9 +15,9 @@ number_points <- 150
 
 
 
-library(dplyr)
-library(tidyr)
-library(devtools)
+suppressMessages(library(dplyr))
+suppressMessages(library(tidyr))
+suppressMessages(library(devtools))
 
 # load 
 user_name <- Sys.info()["user"]
@@ -27,14 +27,18 @@ if (user_name == "benjaminleroy"){ # personal computer
     setwd("/Users/benjaminleroy/Documents/CMU/research/EpiCompare/dev/sir_examination")
   }
   
-  load_all("../../") # just EpiCompare@ben_dev_and_thesis
-  load_all("../../../simulationBands")
+  suppressMessages(load_all("../../")) # just EpiCompare@ben_dev_and_thesis
+  suppressMessages(load_all("../../../simulationBands"))
 } else { # vera.psc.edu
-  library(EpiCompare)
-  library(simulationBands)
+  suppressMessages(library(EpiCompare))
+  suppressMessages(library(simulationBands))
 }
 
-
+# hyperparameter load -----------
+input_sigma_info_str <- "default"
+load(paste0("data/selected_parameters_", 
+            n_simulations, "_", input_sigma_info_str,
+            "_3.Rdata"))
 
 # test set conformal scores ------------------
 
@@ -176,6 +180,10 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = truth_paths,
                                                data_column_names = c("x", "y"),
                                                number_points = Inf,
                                                .to_simplex = F,
+                                               .maxT = selected_parameters$.maxT,
+                                               .sigma_string = selected_parameters$.sigma_string,
+                                               .diff_eps = selected_parameters$.diff_eps,
+                                               .eps = selected_parameters$.eps,
                                                verbose = F,
                                                return_min = F)                                   
                                      
@@ -186,7 +194,8 @@ elapsed_time <- Sys.time() - start_time
 data_out <- list(test_idx = test_idx,
                  n_simulations = n_simulations,
                  elapsed_time = elapsed_time, 
-                 conformal_scores = conformal_score)
+                 conformal_scores = conformal_score,
+                 selected_parameters = selected_parameters)
 
 save(data_out, file = paste0("data/test-info-nsim_",
                              n_simulations, "-", test_idx,
