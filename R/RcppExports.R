@@ -9,3 +9,86 @@ distalongpath <- function(m1) {
     .Call('_EpiCompare_distalongpath', PACKAGE = 'EpiCompare', m1)
 }
 
+#' multiples a matrix by a scalar
+#' 
+#' @param m matrix
+#' @param s scalar (double)
+#' @return matrix who's entries are m's time s.
+scalartimesmat <- function(m, s) {
+    .Call('_EpiCompare_scalartimesmat', PACKAGE = 'EpiCompare', m, s)
+}
+
+#' adds two matrices together
+#' 
+#' @param m1 matrix
+#' @param m2 matrix
+#' @return matrix with elements that are pointwise addition of elements in
+#' m1 and m2
+addmats <- function(m1, m2) {
+    .Call('_EpiCompare_addmats', PACKAGE = 'EpiCompare', m1, m2)
+}
+
+#' calculates the l2 distance between a matrix and each matrix in a list
+#' 
+#' @param m1 primary matrix
+#' @param l2 list of matrices of the same shape of m1
+#' @param usefrac bool if we should calculate the distance relative to a scaling of 
+#' 1/nrow(m1) (before taking the sqrt).
+#' @return numerical vector of distance between m1 and each matrix in list l2
+distvec <- function(m1, l2, usefrac = FALSE) {
+    .Call('_EpiCompare_distvec', PACKAGE = 'EpiCompare', m1, l2, usefrac)
+}
+
+#' calculates the l2 distance two matrices
+#' 
+#' almost  same as EpiCompare::l2filamentdist...
+#' 
+#' @param m1 matrix
+#' @param m2 matrix (same size as m2)
+#' @param usefrac bool if we should calculate the distance relative to a scaling of 
+#' 1/nrow(m1) (before taking the sqrt).
+#' @return numerical distance between m1 and m2
+difffunction <- function(m1, m2, usefrac = FALSE) {
+    .Call('_EpiCompare_difffunction', PACKAGE = 'EpiCompare', m1, m2, usefrac)
+}
+
+inner_dist_density <- function(distance, sigma) {
+    .Call('_EpiCompare_inner_dist_density', PACKAGE = 'EpiCompare', distance, sigma)
+}
+
+#' psuedo density walking towards the mode
+#' 
+#' @param X_list list of matrices (same size), these define the psuedo density
+#' @param G_list list of matrices to walk up (can be the same as X_list, but 
+#' need not be).
+#' @param sigma double, sigma for distance psuedo density calculation
+#' @param eps double, distance between iterative steps when to stop progressing 
+#' (aka stop at a mode)
+#'@param maxT int, max number of interations
+#'@param verbose boolean, if we should use a progress bar
+#'@param usefrac boolean, if we should calculate the distance relative to this 
+#'scaling (should also impact the earlier calculation of sigma)
+#'
+#'@return Updated step of G_list
+psuedo_density_mode_cluster <- function(X_list, G_list, sigma, eps = 1E-06, maxT = 10L, verbose = TRUE, usefrac = FALSE) {
+    .Call('_EpiCompare_psuedo_density_mode_cluster', PACKAGE = 'EpiCompare', X_list, G_list, sigma, eps, maxT, verbose, usefrac)
+}
+
+#' psuedo density walking towards the mode
+#' 
+#' @param X_list list of matrices (same size), these define the psuedo density
+#' @param G_list list of matrices to walk up (can be the same as X_list, but 
+#' need not be).
+#' @param sigma double, sigma for distance psuedo density calculation
+#' @param eps double, distance between iterative steps when to stop progressing 
+#' (aka stop at a mode)
+#'@param maxT int, max number of interations
+#'@param verbose boolean, if we should use a progress bar
+#'@param usefrac boolean, if we should calculate the distance relative to this 
+#'scaling (should also impact the earlier calculation of sigma)
+#'
+#'@return Updated step of G_list
+psuedo_density_mode_cluster2 <- function(X_list, G_list, sigma, eps = 1E-06, maxT = 10L, verbose = TRUE, usefrac = FALSE) {
+    .Call('_EpiCompare_psuedo_density_mode_cluster2', PACKAGE = 'EpiCompare', X_list, G_list, sigma, eps, maxT, verbose, usefrac)
+}
+

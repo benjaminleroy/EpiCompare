@@ -11,6 +11,7 @@ is actually d^2}
 dist_matrix_innersq_direction(
   x,
   position = NULL,
+  usefrac = FALSE,
   verbose = FALSE,
   tdm_out = FALSE
 )
@@ -18,6 +19,7 @@ dist_matrix_innersq_direction(
 \method{dist_matrix_innersq_direction}{list}(
   x,
   position = NULL,
+  usefrac = FALSE,
   verbose = FALSE,
   tdm_out = FALSE
 )
@@ -25,6 +27,7 @@ dist_matrix_innersq_direction(
 \method{dist_matrix_innersq_direction}{data.frame}(
   x,
   position = NULL,
+  usefrac = FALSE,
   verbose = FALSE,
   tdm_out = FALSE
 )
@@ -32,6 +35,7 @@ dist_matrix_innersq_direction(
 \method{dist_matrix_innersq_direction}{grouped_df}(
   x,
   position = NULL,
+  usefrac = FALSE,
   verbose = FALSE,
   tdm_out = FALSE
 )
@@ -40,6 +44,9 @@ dist_matrix_innersq_direction(
 \item{x}{list of paths (data frames) - need to have the same num rows or a nested_df}
 
 \item{position}{column index of (x,y,...) euclidean coords.}
+
+\item{usefrac}{if we should calculate the distance relative to a scaling of 
+1/nrow(x[[i]]) (before taking the square-root).}
 
 \item{verbose}{boolean logic if should have print outs while computing
 distance matrix}
