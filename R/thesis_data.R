@@ -140,6 +140,20 @@ check_number_of_groups <- function(dist_mat, diff_eps){
 }
 
 
+#' Title
+#'
+#' @param dist_mat 
+#' @param diff_eps 
+#'
+#' @return
+#' @export
+get_groups <- function(dist_mat, diff_eps){
+  adjmatrix <- dist_mat <= diff_eps
+  ig <- igraph::graph_from_adjacency_matrix(adjmatrix, mode = "undirected")
+  
+  return(igraph::components(ig, mode = "strong")$membership) # number of clusters
+}
+
 #' smart model clustering that examines mode clustering across a range of 
 #' paramters
 #'
@@ -163,7 +177,8 @@ mode_cluster2 <- function(g_list, g_names, position, sigma,
                           range_maxT = c(seq(30, 130, by = 20), 200),
                           range_diff_eps = 10^seq(-5,-8, by = .5), 
                           usefrac = T,
-                          verbose = T){
+                          verbose = T,
+                          collect_group_info = F){
   x_list_inner <- g_list %>% 
     lapply(function(df) df[,position])
   
@@ -182,6 +197,10 @@ mode_cluster2 <- function(g_list, g_names, position, sigma,
   }
   
   steps_counter <- 0
+  if (collect_group_info){
+    groups_cluster_list <- list()
+  }
+  
   for (i_maxT in 1:length(range_maxT)) {
     if (i_maxT == 1){
       lower_maxT <- 0
@@ -210,10 +229,19 @@ mode_cluster2 <- function(g_list, g_names, position, sigma,
                                                 position = 1:ncol(out_list[[1]][[3]][[1]]),
                                                 usefrac = T,
                                                 verbose = F) 
+      
       # (2) examine across cutoffs the number of groups
       number_clusters <- sapply(range_diff_eps, function(diff_eps) check_number_of_groups(dist_mat, diff_eps))
       
-      # (3) storage
+      # (2.5) group clustering
+      for (diff_eps in range_diff_eps){
+        inner_grouping_vec <- get_groups(dist_mat, diff_eps)
+        inner_grouping_df <- g_names %>% mutate(groupings = inner_grouping_vec)
+        groups_cluster_list[[paste0(string_eps, "-", diff_eps)]] <- inner_grouping_df
+      }
+      
+      
+      # (3) storage 
       steps_counter <- steps_counter + out_list[[1]][[2]]
       inner_info <- data.frame(maxT = range_maxT[i_maxT],
                                total_steps = steps_counter,
@@ -257,5 +285,439 @@ mode_cluster2 <- function(g_list, g_names, position, sigma,
       break
     }
   }
-  return(full_info)
+  if (collect_group_info) {
+    return(list(full_info, groups_cluster_list))
+  } else {
+    return(list(full_info))
+  }
+}
+
+
+
+#' update a tm_radius matrix by smoothing about minim covering radi values
+#'
+#' @param tm_radius original list of lists, each containing a 
+#' \code{min_cover_vec} and a \code{dist_mat} to be updated.
+#' @param func smoothing function that creates a  function that takes in 
+#' \code{x} and \code{y} and returns a smoothed \code{y_hat} for the x values.
+#'
+#' @return updated \code{tm_radius}
+#' @export
+update_tm_smooth <- function(tm_radius, func){
+  n_l <- length(tm_radius)
+  tm_radius_out <- list()
+  for (l_idx in 1:n_l){
+    min_vec <- tm_radius[[l_idx]]$min_cover_vec
+    n_inner <- length(min_vec)
+    xx <- 1:n_inner
+    smooth_min_vec <- func(xx, min_vec)
+
+    dist_mat <- tm_radius[[l_idx]]$dist_mat
+    dist_mat[1,1] <- smooth_min_vec[1]
+    if (n_inner > 1){
+      for (r_idx in 2:n_inner){
+        dist_mat[r_idx, r_idx] <- smooth_min_vec[r_idx]
+        update_bool <- dist_mat[1:(r_idx-1),(r_idx-1)] < smooth_min_vec[r_idx]
+        dist_mat[which(update_bool), r_idx] <- smooth_min_vec[r_idx]
+        dist_mat[which(!update_bool), r_idx] <- dist_mat[which(!update_bool), r_idx-1]
+      }
+  }
+    inner_list <- list(min_cover_vec = smooth_min_vec,
+                       dist_mat = dist_mat)
+    tm_radius_out[[l_idx]] <- inner_list
+  }
+  return(tm_radius_out)
+}
+
+
+
+#' creates a cdf for any discrete uniform distribution (for all integer values)
+#'
+#' @param min lowest integer with non-zero prob
+#' @param max highest integer with non-zero prob
+#'
+#' @return cumulative distribution function 
+#' @export
+create_discrete_uniform_cdf <- function(min = 0, max = 1000){
+  inner_function <- function(x) {
+    lower <- floor(x)
+    lower[lower > max] <- max
+    cdf_value <- (lower - min+1)/(max-min+1)
+    cdf_value[lower < min] <- 0
+    return(cdf_value)
+  }
+  return(inner_function)
+}
+
+
+#' test how close conformal scores are to discrete uniform distribution
+#' across functions
+#'
+#' @param info_x 
+#' @param sim_names 
+#' @param sim_list 
+#' @param info_x_test 
+#' @param pseudo_density_df 
+#' @param grouping_df_list 
+#' @param named_smooth_function_list 
+#' @param tdm_sim 
+#' @param mm_delta 
+#'
+#' @return
+#' @export
+uniform_check_wrapper <- function(info_x,
+                                  sim_list,
+                                  sim_names, 
+                                  info_x_test,
+                                  pseudo_density_df,
+                                  grouping_df_list,
+                                  named_smooth_function_list,
+                                  tdm_sim,
+                                  mm_delta,
+                                  dist_between_array,
+                                  verbose = T){
+  # across groupings (radius calculations):
+  # for each grouping structure:
+  # 1. calculate analysis with different grouping structures (with mode = True)
+  # 
+  # for all options (1 fixed_nm, x fixed, 1 vary_nm, x vary:
+  # if not vary:
+  #   1. create tm_matrix for mode cluster
+  # if vary:
+  #   1. create new tm_matrices across all smoothing parameters
+  # 
+  # 2. calculate  conformal scores 
+  # 3. get pvalue of test against a discrete uniform 0:1000
+  
+  # track: tm_matrix type, mode selection eps (eps + diff), smoothing (include "not")
+  # less than: 4 * 10 * 6 * (8)
+  #
+  n_list <- length(grouping_df_list)
+  n_func <- length(smooth_function_list)
+  
+  p_storage <- data.frame()
+  
+  out_groups_nm <- sim_names %>% dplyr::mutate(groupings = 1)
+  simulation_info_out_nm <- inner_expanding_info(pseudo_density_df, 
+                                                 out_groups_nm)
+  simulation_info_df_nm <- simulation_info_out_nm[[1]]
+  ordering_list_nm <- simulation_info_out_nm[[2]]
+  
+  
+  pdiscreteunif <- create_discrete_uniform_cdf(min = 0, max = nrow(sim_names))
+  
+  for (g_idx in 0:n_list){
+    if (g_idx == 0){ # nm
+      # build tm ------
+      ## fixed_nm -----
+      tm_radius_fixed_nm <- inner_convert_single_radius_to_structure(mm_delta, 
+                                                                     ordering_list_nm)
+      ## vary_nm ------
+      tm_radius_vary_nm <- coverage_down_mlist_save(inner_dist_mat = dist_between_array,
+                                                    g_order_ll =  ordering_list_nm,
+                                                    verbose = verbose)
+      
+      # calculate conformal scores ----
+      conformal_df_fixed_nm <- inner_containment_conformal_score_mode_radius(
+        df_row_group = info_x_test, 
+        simulations_group_df = info_x, 
+        data_column_names = c("x","y"),
+        simulation_info_df = simulation_info_df_nm, # TODO look at 
+        list_radius_info = tm_radius_fixed_nm, # diff
+        list_grouping_id = ordering_list_nm, # diff
+        verbose = verbose)
+      
+      conformal_df_vary_nm <- inner_containment_conformal_score_mode_radius(
+        df_row_group = info_x_test, # change
+        simulations_group_df = info_x, 
+        data_column_names =  c("x","y"),
+        simulation_info_df = simulation_info_df_nm, 
+        list_radius_info = tm_radius_vary_nm, # diff
+        list_grouping_id = ordering_list_nm, # diff
+        verbose = verbose)
+      
+      # get pvalue ------
+      suppressWarnings(ptest_fixed_nm <- chisq.test(
+        table(factor(conformal_df_fixed_nm$containment_val,
+                     levels = 0:1000)))$p.value)
+      # do chisq.test instead
+      p_storage <- rbind(p_storage ,
+                         data.frame(type = "fixed_nm",
+                                    grouping_var = NA,
+                                    func_name = NA,
+                                    pvalue = ptest_fixed_nm))
+      
+      suppressWarnings(ptest_vary_nm <- chisq.test(
+        table(factor(conformal_df_vary_nm$containment_val,
+                     levels = 0:1000)))$p.value)
+      p_storage <- rbind(p_storage ,
+                         data.frame(type = "vary_nm",
+                                    grouping_var = NA, 
+                                    func_name = NA,
+                                    pvalue = ptest_vary_nm))
+      
+      # then smoothings ---
+      for (f_idx in 1:n_func){ # for vary only
+        # update tm_matrix from above ----
+        tm_radius_vary_nm_update <- update_tm_smooth(tm_radius_vary_nm, 
+                                                     func = named_smooth_function_list[[f_idx]])
+        
+        # calculate conformal scores ---
+        conformal_df_vary_nm_update <- inner_containment_conformal_score_mode_radius(
+          df_row_group = info_x_test,
+          simulations_group_df = info_x, 
+          data_column_names = c("x","y"),
+          simulation_info_df = simulation_info_df_nm, 
+          list_radius_info = tm_radius_vary_nm_update, # diff
+          list_grouping_id = ordering_list_nm, # diff
+          verbose = verbose)
+        
+        # get pvalue ---
+        suppressWarnings(ptest_vary_nm_update <- chisq.test(
+          table(factor(conformal_df_vary_nm_update$containment_val,
+                       levels = 0:1000)))$p.value)
+        p_storage <- rbind(p_storage,
+                           data.frame(type = "vary_nm",
+                                      grouping_var = NA,
+                                      func_name = names(named_smooth_function_list)[f_idx],
+                                      pvalue = ptest_vary_nm_update))
+      }
+      
+      
+      
+    } else { # mode variants
+      
+      # for first without modification (name tm_matrix different than below)
+      
+      # build tm ------
+      simulation_info_out <- inner_expanding_info(pseudo_density_df, 
+                                                  grouping_df_list[[g_idx]])
+      simulation_info_df <- simulation_info_out[[1]]
+      ordering_list <- simulation_info_out[[2]]
+      
+      tm_radius_fixed <- inner_convert_single_radius_to_structure(mm_delta, 
+                                                                  ordering_list)
+      
+      
+      tm_radius_vary <- coverage_down_mlist_save(inner_dist_mat = dist_between_array,
+                                                 g_order_ll = ordering_list)
+      
+      # calculate conformal scores ----
+      
+      conformal_df_fixed <- inner_containment_conformal_score_mode_radius(
+        df_row_group = info_x_test, # change
+        simulations_group_df = info_x, 
+        data_column_names = c("x","y"),
+        simulation_info_df = simulation_info_df, 
+        list_radius_info = tm_radius_fixed, # diff
+        list_grouping_id = ordering_list, # diff
+        verbose = verbose)
+      
+      conformal_df_vary <- inner_containment_conformal_score_mode_radius(
+        df_row_group = info_x_test,
+        simulations_group_df = info_x, 
+        data_column_names = c("x","y"),
+        simulation_info_df = simulation_info_df, 
+        list_radius_info = tm_radius_vary, # diff
+        list_grouping_id = ordering_list, # diff
+        verbose = verbose)
+      
+      # get pvalue ----
+      suppressWarnings(ptest_fixed <- chisq.test(
+        table(factor(conformal_df_fixed$containment_val,
+                     levels = 0:1000)))$p.value)
+      
+      p_storage <- rbind(p_storage,
+                         data.frame(type = "fixed",
+                                    grouping_var = names(grouping_df_list)[g_idx],
+                                    func_name = NA,
+                                    pvalue = ptest_fixed))
+      
+      suppressWarnings(ptest_vary <- chisq.test(
+        table(factor(conformal_df_vary$containment_val,
+                     levels = 0:1000)))$p.value)
+      
+      p_storage <- rbind(p_storage,
+                         data.frame(type = "vary",
+                                    grouping_var = names(grouping_df_list)[g_idx],
+                                    func_name = NA,
+                                    pvalue = ptest_vary))
+      
+      # then smoothings ---
+      for (f_idx in 1:n_func){ # for vary only
+        # update tm_matrix from above ----
+        tm_radius_vary_update <- update_tm_smooth(tm_radius_vary, 
+                                                  func = named_smooth_function_list[[f_idx]])
+        
+        # calculate conformal scores ---
+        conformal_df_vary_update <- inner_containment_conformal_score_mode_radius(
+          df_row_group = info_x_test,
+          simulations_group_df = info_x, 
+          data_column_names = c("x","y"),
+          simulation_info_df = simulation_info_df, 
+          list_radius_info = tm_radius_vary_update, # diff
+          list_grouping_id = ordering_list, # diff
+          verbose = verbose)
+        
+        # get pvalue ---
+        suppressWarnings(ptest_vary_update <- chisq.test(
+          table(factor(conformal_df_vary_update$containment_val,
+                       levels = 0:1000)))$p.value)
+        p_storage <- rbind(p_storage,
+                           data.frame(type = "vary",
+                                      grouping_var = names(grouping_df_list)[g_idx],
+                                      func_name = names(named_smooth_function_list)[f_idx],
+                                      pvalue = ptest_vary_update))
+      }
+      
+      
+    }
+  }
+  
+  
+}
+
+
+#' coverage_down with a saved large array matrix
+#'
+#' @param inner_dist_mat array distance matrix, [i,j,k] is the minimum distance 
+#' from all of jth curves points to ith curves' kth point 
+#' @param g_order vector order of curves 
+#' @param verbose bool
+#'
+#' @return list of \code{min_cover_vec} and \code{dist_mat}
+#' @export
+coverage_down_slist_save <- function(inner_dist_mat,
+                                     g_order, verbose = T){
+  n_l <- length(g_order)
+  
+  if (n_l == 1){
+    inner_list <- list(min_cover_vec = c(0),
+                       dist_mat = matrix(0))
+    
+    return(inner_list)
+  }
+  
+  if (verbose) {
+    pb <- progress::progress_bar$new(
+      format = "create coverage_down info [:bar] :percent eta: :eta",
+      total = n_l-1, clear = FALSE, width = 60)
+  }
+  
+  # create min_cover_vec -----
+  min_cover_vec <- rep(NA, n_l)
+  min_cover_vec[1] <- 0
+  
+  mat_inner <- matrix(Inf, nrow = n_l, ncol = dim(inner_dist_mat)[3])
+  
+  for (l_idx in 2:n_l){
+    #inner_g_order <- g_order[1:l_idx]
+    if (l_idx == 2){
+      mat_inner[l_idx,] <- inner_dist_mat[g_order[l_idx], g_order[1:(l_idx-1)],] 
+    } else {
+      mat_inner[l_idx,] <- inner_dist_mat[g_order[l_idx], g_order[1:(l_idx-1)],] %>%
+        apply(2, min) 
+    }
+    
+    
+    if (l_idx == 2){
+      mat_inner[1,] <- inner_dist_mat[g_order[1], g_order[2],] 
+    } else {
+      mat_inner[1:(l_idx-1),] <- array(
+        c(mat_inner[1:(l_idx-1),], inner_dist_mat[g_order[1:(l_idx-1)],g_order[l_idx],]),
+        dim = c(l_idx-1,
+                dim(inner_dist_mat)[3],
+                2)) %>% 
+        apply(1:2, min)
+    }
+    
+    
+    min_cover_vec[l_idx] <- mat_inner[1:l_idx,] %>%
+      max # apply(1, max) %>% max is the same
+    
+    if(verbose){
+      pb$tick()
+    }
+  }
+  
+  # create dist_mat ----
+  
+  
+  
+  dist_mat <- matrix(NA, nrow = n_l, ncol = n_l)
+  dist_mat[1,1] <- min_cover_vec[1]
+  for (r_idx in 2:n_l){
+    dist_mat[r_idx, r_idx] <- min_cover_vec[r_idx]
+    update_bool <- dist_mat[1:(r_idx-1),(r_idx-1)] < min_cover_vec[r_idx]
+    dist_mat[which(update_bool), r_idx] <- min_cover_vec[r_idx]
+    dist_mat[which(!update_bool), r_idx] <- dist_mat[which(!update_bool), r_idx-1]
+  }
+  inner_list <- list(min_cover_vec = min_cover_vec,
+                     dist_mat = dist_mat)
+  
+  return(inner_list)
+}
+
+
+#' create an array to captures the coverage_down ideas to be used for any ordering
+#'
+#' @param data_list list of data frames  
+#' @param e_cols columns associated with location of path points
+#' @param .e_cols_string boolean if e_cols is a string (not a promise)
+#' @param verbose boolean if we should be verbose (this can take a long time)
+#'
+#' @return array[i,j,k] the minimum distance from all of jth curves points to 
+#' ith curves' kth point 
+#' @export
+#'
+#' @examples
+coverage_down_list_save <- function(data_list, 
+                                    e_cols, 
+                                    .e_cols_string,
+                                    verbose = T){
+  n_obs <- length(data_list)
+  n_of_obs <- unique(sapply(data_list, nrow))
+  
+  if (length(n_of_obs) != 1){
+    stop("data.frames in data_list are not the same length.")
+  }
+  
+  if (verbose) {
+    pb <- progress::progress_bar$new(
+      format = "creating distance all [:bar] :percent eta: :eta",
+      total = n_obs^2, clear = FALSE, width = 60)
+  }
+  
+  inner_dist_mat <- array(Inf, dim = c(n_obs,n_obs,n_of_obs))
+  for (r_idx in 1:n_obs){ # ignore self?
+    for (c_idx in 1:n_obs){
+      both_out <- inner_min_dist_per_point(data_list[[r_idx]], 
+                                           data_list[c_idx], e_cols,
+                                           .e_cols_string = .e_cols_string)
+      inner_dist_mat[c_idx,r_idx,1:n_of_obs] <- both_out$nn_info_l %>% as.vector()
+      if (verbose){
+        pb$tick()
+      }
+    }
+  }
+  return(inner_dist_mat)
+}
+
+
+#' coverage_down with a saved large array matrix, multiple order vectors
+#'
+#' @param inner_dist_mat array distance matrix, [i,j,k] is the minimum distance 
+#' from all of jth curves points to ith curves' kth point 
+#' @param g_order_ll list of order of curves 
+#'
+#' @return list of \code{min_cover_vec} and \code{dist_mat}
+#' @export
+coverage_down_mlist_save <- function(inner_dist_mat,
+                                     g_order_ll,
+                                     verbose = F){
+  out_list <- lapply(g_order_ll, function(g_order) coverage_down_slist_save(inner_dist_mat,
+                                                                            g_order,
+                                                                            verbose = verbose))
+  
+  return(out_list)
 }

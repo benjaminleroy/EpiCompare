@@ -1275,11 +1275,12 @@ testthat::test_that("test simulation_based_conformal4 with tests from 3",{
   }
   
   # expect messages about an individual mode
+  ## WARNING: not sure why this doesn't message anymore...
   testthat::expect_message(simulation_based_conformal4(truth_grouped_df = truth_curve,
                                                        simulations_grouped_df = sim_curves,
                                                        data_column_names = c("x", "y"),
                                                        number_points = Inf,
-                                                       .to_simplex = F, 
+                                                       .to_simplex = F,
                                                        .use_frac = T,
                                                        .small_size_mode_cluster = Inf,
                                                        .sigma_string = "35%",

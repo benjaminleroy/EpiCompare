@@ -14,7 +14,8 @@ mode_cluster2(
   range_maxT = c(seq(30, 130, by = 20), 200),
   range_diff_eps = 10^seq(-5, -8, by = 0.5),
   usefrac = T,
-  verbose = T
+  verbose = T,
+  collect_group_info = F
 )
 }
 \arguments{
