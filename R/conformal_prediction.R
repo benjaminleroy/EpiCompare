@@ -1414,7 +1414,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
       df_row_group = truth_df_inner,
       simulations_group_df = simulations_group_df_inner, 
       data_column_names = data_column_names,
-      simulation_info_df = simulation_info_df, 
+      simulation_info_df = simulation_info_df, # diff
       list_radius_info = tm_radius_fixed, # diff
       list_grouping_id = ordering_list, # diff
       verbose = verbose)
@@ -1423,7 +1423,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     df_row_group = truth_df_inner,
     simulations_group_df = simulations_group_df_inner, 
     data_column_names = data_column_names,
-    simulation_info_df = simulation_info_df, 
+    simulation_info_df = simulation_info_df_nm, # diff 
     list_radius_info = tm_radius_fixed_nm, # diff
     list_grouping_id = ordering_list_nm, # diff
     verbose = verbose)
@@ -1432,7 +1432,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     df_row_group = truth_df_inner,
     simulations_group_df = simulations_group_df_inner, 
     data_column_names = data_column_names,
-    simulation_info_df = simulation_info_df, 
+    simulation_info_df = simulation_info_df, # diff
     list_radius_info = tm_radius_vary, # diff
     list_grouping_id = ordering_list, # diff
     verbose = verbose)
@@ -1441,7 +1441,7 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     df_row_group = truth_df_inner,
     simulations_group_df = simulations_group_df_inner, 
     data_column_names = data_column_names,
-    simulation_info_df = simulation_info_df, 
+    simulation_info_df = simulation_info_df_nm, # diff
     list_radius_info = tm_radius_vary_nm, # diff
     list_grouping_id = ordering_list_nm, # diff
     verbose = verbose)

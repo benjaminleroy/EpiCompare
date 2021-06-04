@@ -1,14 +1,17 @@
-# run: Rscript 3-test_set_conformal_scores.R [1-101] 1000
+# run: Rscript 3-test_set_conformal_scores.R [1-101] 1000 T
 # expected run time 1.6 hours (shoot for 2:30)
 
-input_args <- as.numeric(commandArgs(trailingOnly=TRUE))
-test_idx <- input_args[1]
+input_args <- commandArgs(trailingOnly=TRUE)
+test_idx <- as.numeric(input_args[1])
 
 # global parameters ----------
 
-n_simulations <- input_args[2]
+n_simulations <- as.numeric(input_args[2])
 n_sims_containment <- 300
 number_points <- 150
+
+return_min_bool <- as.logical(input_args[3])
+
 
 
 # loading data and libraries (minimal data) ----
@@ -185,7 +188,7 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = truth_paths,
                                                .diff_eps = selected_parameters$.diff_eps,
                                                .eps = selected_parameters$.eps,
                                                verbose = F,
-                                               return_min = F)                                   
+                                               return_min = return_min_bool)                                   
                                      
                                   
 elapsed_time <- Sys.time() - start_time

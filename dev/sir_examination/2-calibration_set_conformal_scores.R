@@ -119,7 +119,7 @@ conformal_score <- simulation_based_conformal4(truth_grouped_df = inner_truth_df
                                               .diff_eps = selected_parameters$.diff_eps,
                                               .eps = selected_parameters$.eps,
                                               verbose = F,
-                                              return_min = F)
+                                              return_min = T)
 elapsed_time <- Sys.time() - start
 
 
