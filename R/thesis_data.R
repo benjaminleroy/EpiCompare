@@ -574,7 +574,7 @@ uniform_check_wrapper <- function(info_x,
     }
   }
   
-  
+  return(p_storage)
 }
 
 

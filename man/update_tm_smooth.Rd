@@ -11,7 +11,7 @@ update_tm_smooth(tm_radius, func)
 \code{min_cover_vec} and a \code{dist_mat} to be updated.}
 
 \item{func}{smoothing function that creates a  function that takes in 
-\code{x} and returns \code{y_hat} after taking in a \code{x} and \code{y}}
+\code{x} and \code{y} and returns a smoothed \code{y_hat} for the x values.}
 }
 \value{
 updated \code{tm_radius}
