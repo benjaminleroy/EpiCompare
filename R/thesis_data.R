@@ -31,7 +31,15 @@ data_generation <- function(x_inner, n_sims_containment = 1000,
                             idx = as.character(rep(NA, number_points*n_sims_containment)),
                             set_idx = as.character(rep(NA, number_points*n_sims_containment)),
                             x = as.numeric(rep(NA, number_points*n_sims_containment)),
-                            y = as.numeric(rep(NA, number_points*n_sims_containment)))
+                            y = as.numeric(rep(NA, number_points*n_sims_containment))) %>%
+    dplyr::mutate(x_original = as.numeric(x_original),
+                  R0 = as.numeric(R0),
+                  beta = as.numeric(beta),
+                  gamma = as.numeric(gamma),
+                  idx = as.character(r_idx),
+                  set_idx = as.character(set_idx),
+                  x = as.numeric(x),
+                  y = as.numeric(y))
   
   
   if (verbose) {
@@ -63,7 +71,13 @@ data_generation <- function(x_inner, n_sims_containment = 1000,
                       gamma = inner_info$gamma,
                       idx = r_idx,
                       set_idx = inner_info$idx,
-                      inner_paths)
+                      inner_paths) %>% 
+      dplyr::mutate(x_original = as.numeric(x_original),
+                    R0 = as.numeric(R0),
+                    beta = as.numeric(beta),
+                    gamma = as.numeric(gamma),
+                    idx = as.character(r_idx),
+                    set_idx = as.character(set_idx))
     
     truth_paths[global_r_idx, ] <- inner_df
     if (verbose){
