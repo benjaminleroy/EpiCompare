@@ -40,24 +40,25 @@ if (input_sigma_info == "default"){
 
 create_smooth_function <- function(df){
   
-  smooth_function <- function(x,y){
+  eval(parse(text = paste0("smooth_function <- function(x,y){
     tryCatch({
-      inner_ss <- smooth.spline(x,y, df = df)
+      inner_ss <- smooth.spline(x,y, df = ",
+      df,
+      ")
       return(predict(inner_ss,x)$y)},
       error = function(cond){
-        message(sprintf("returning y: error in size of x (%i < 4)", length(x)))
+        message(sprintf(\"returning y: error in size of x (%i < 4)\", length(x)))
         return(y)
       },
       warning = function(cond){
-        message(sprintf(paste("returning y: error in size of x",
-                              "relative to size of df (%i < %i)"),
-                        length(x), df))
+        message(sprintf(paste(\"returning y: error in size of x\",
+                              \"relative to size of df (%i < %i)\"),
+                        length(x), ", df, "))
         return(y)
       }
     )
-    
+  }")))
 
-  }
   return(smooth_function)
 }
 
@@ -84,9 +85,9 @@ inner_moving <- function(x, y, window = 5, fill_left = T,
 }
 
 create_min_smooth_function <- function(window){
-  out_function <- function(x,y){
-    inner_moving(x,y, window = window, fill_left = T, fun = min)
-  }
+  eval(parse(text = paste0("out_function <- function(x,y){
+    inner_moving(x,y, window = ", window,", fill_left = T, fun = min)
+  }")))
   return(out_function)
 }
 
@@ -152,6 +153,7 @@ uniform_kl_div <- function(cs_vec, range = c(0,1000), size_bins = c(1,10,25,50))
 uniform_multiple_check <- function(cs_vec, range = c(0,1000), size_bins = c(1,10,25,50)){
   p_values <- rep(NA, length(size_bins))
   kl_values <-  rep(NA, length(size_bins))
+  l2_values <- rep(NA, length(size_bins))
   idx <- 1
   for (n_bins in size_bins){
     cs_binned <- cs_vec %>% cut(breaks = seq(range[1], range[2], by = n_bins)) %>%
@@ -173,31 +175,34 @@ uniform_multiple_check <- function(cs_vec, range = c(0,1000), size_bins = c(1,10
     
     p_values[idx] <- chisq.test(cs_binned, p = p)$p.value
     kl_values[idx] <- sum(cs_binned_prop_corrected * log(cs_binned_prop_corrected/p))
+    l2_values[idx] <- mean((cs_binned_prop-p)^2)
+    
     
     idx <- idx + 1
   }
   out <- data.frame(size_bins = size_bins,
                     p_values = p_values,
-                    kl_values = kl_values)
+                    kl_values = kl_values,
+                    l2_values = l2_values)
   return(out)
 }
 
-testthat::test_that("test uniform_multiple_check", {
-  set.seed(1)
-  cs_vec <- ceiling(runif(.99, 1000, n = 1000))
-  suppressWarnings(out <- uniform_multiple_check(cs_vec))
-  
-  testthat::expect_true(all(out$p_values > 0))
-  testthat::expect_true(all(out$kl_values < 2))
-  
-  
-  cs_vec_bad <- ceiling(rbinom(size = 1000, prob = .5, n = 1000))
-  suppressWarnings(out_bad <- uniform_multiple_check(cs_vec_bad))
-  
-  testthat::expect_true(all(out_bad$kl_values > 2))
-  testthat::expect_true(all(out_bad$p_values < .001))
-  
-})
+# testthat::test_that("test uniform_multiple_check", {
+#   set.seed(1)
+#   cs_vec <- ceiling(runif(.99, 1000, n = 1000))
+#   suppressWarnings(out <- uniform_multiple_check(cs_vec))
+#   
+#   testthat::expect_true(all(out$p_values > 0))
+#   testthat::expect_true(all(out$kl_values < 2))
+#   
+#   
+#   cs_vec_bad <- ceiling(rbinom(size = 1000, prob = .5, n = 1000))
+#   suppressWarnings(out_bad <- uniform_multiple_check(cs_vec_bad))
+#   
+#   testthat::expect_true(all(out_bad$kl_values > 2))
+#   testthat::expect_true(all(out_bad$p_values < .001))
+#   
+# })
 
 
 # \/ uniform function *** ***  ---------
@@ -220,7 +225,7 @@ testthat::test_that("test uniform_multiple_check", {
 uniform_check_wrapper2 <- function(info_x,
                                    sim_list,
                                    sim_names, 
-                                   info_x_test,
+                                   info_x_test_list,
                                    pseudo_density_df,
                                    grouping_df_list,
                                    named_smooth_function_list,
@@ -277,71 +282,77 @@ uniform_check_wrapper2 <- function(info_x,
                                                 g_order_ll =  ordering_list_nm,
                                                 verbose = verbose)
   
-  # calculate conformal scores ----
-  conformal_df_fixed_nm <- inner_containment_conformal_score_mode_radius(
-    df_row_group = info_x_test, 
-    simulations_group_df = info_x, 
-    data_column_names = c("x","y"),
-    simulation_info_df = simulation_info_df_nm, # TODO look at 
-    list_radius_info = tm_radius_fixed_nm, # diff
-    list_grouping_id = ordering_list_nm, # diff
-    verbose = verbose)
-  
-  conformal_df_vary_nm <- inner_containment_conformal_score_mode_radius(
-    df_row_group = info_x_test, # change
-    simulations_group_df = info_x, 
-    data_column_names =  c("x","y"),
-    simulation_info_df = simulation_info_df_nm, 
-    list_radius_info = tm_radius_vary_nm, # diff
-    list_grouping_id = ordering_list_nm, # diff
-    verbose = verbose)
-  
-  # get pvalue ------
-  suppressWarnings(
-    ptest_fixed_nm <- uniform_multiple_check(conformal_df_fixed_nm$containment_val))
-  # do chisq.test instead
-  p_storage_0 <- rbind(p_storage_0 ,
-                       ptest_fixed_nm %>%
-                         dplyr::mutate(type = "fixed_nm",
-                                  grouping_var = NA,
-                                  func_name = NA))
-  
-
-  suppressWarnings(
-    ptest_vary_nm <- uniform_multiple_check(conformal_df_vary_nm$containment_val))
-  p_storage_0 <- rbind(p_storage_0 ,
-                       ptest_vary_nm %>%
-                         dplyr::mutate(type = "vary_nm",
-                                       grouping_var = NA,
-                                       func_name = NA))
-  
-  # then smoothings ---
-  for (f_idx in 1:n_func){ # for vary only
-    # update tm_matrix from above ----
-    tm_radius_vary_nm_update <- update_tm_smooth(tm_radius_vary_nm, 
-                                                 func = named_smooth_function_list[[f_idx]])
-    
-    # calculate conformal scores ---
-    conformal_df_vary_nm_update <- inner_containment_conformal_score_mode_radius(
-      df_row_group = info_x_test,
+  for (n_sim in 1:length(info_x_test_list)){
+    info_x_test <- info_x_test_list[[n_sim]]
+    # calculate conformal scores ----
+    conformal_df_fixed_nm <- inner_containment_conformal_score_mode_radius(
+      df_row_group = info_x_test, 
       simulations_group_df = info_x, 
       data_column_names = c("x","y"),
-      simulation_info_df = simulation_info_df_nm, 
-      list_radius_info = tm_radius_vary_nm_update, # diff
+      simulation_info_df = simulation_info_df_nm, # TODO look at 
+      list_radius_info = tm_radius_fixed_nm, # diff
       list_grouping_id = ordering_list_nm, # diff
       verbose = verbose)
     
-    # get pvalue ---
+    conformal_df_vary_nm <- inner_containment_conformal_score_mode_radius(
+      df_row_group = info_x_test, # change
+      simulations_group_df = info_x, 
+      data_column_names =  c("x","y"),
+      simulation_info_df = simulation_info_df_nm, 
+      list_radius_info = tm_radius_vary_nm, # diff
+      list_grouping_id = ordering_list_nm, # diff
+      verbose = verbose)
     
+    # get pvalue ------
     suppressWarnings(
-      ptest_vary_nm_update <- uniform_multiple_check(conformal_df_vary_nm_update$containment_val))
+      ptest_fixed_nm <- uniform_multiple_check(conformal_df_fixed_nm$containment_val))
     # do chisq.test instead
     p_storage_0 <- rbind(p_storage_0 ,
-                         ptest_vary_nm_update %>%
+                         ptest_fixed_nm %>%
+                           dplyr::mutate(type = "fixed_nm",
+                                    grouping_var = NA,
+                                    func_name = NA,
+                                    n_sim = n_sim))
+    
+  
+    suppressWarnings(
+      ptest_vary_nm <- uniform_multiple_check(conformal_df_vary_nm$containment_val))
+    p_storage_0 <- rbind(p_storage_0 ,
+                         ptest_vary_nm %>%
                            dplyr::mutate(type = "vary_nm",
                                          grouping_var = NA,
-                                         func_name = names(named_smooth_function_list)[f_idx]))
+                                         func_name = NA,
+                                         n_sim = n_sim))
     
+    # then smoothings ---
+    for (f_idx in 1:n_func){ # for vary only
+      # update tm_matrix from above ----
+      tm_radius_vary_nm_update <- update_tm_smooth(tm_radius_vary_nm, 
+                                                   func = named_smooth_function_list[[f_idx]])
+      
+      # calculate conformal scores ---
+      conformal_df_vary_nm_update <- inner_containment_conformal_score_mode_radius(
+        df_row_group = info_x_test,
+        simulations_group_df = info_x, 
+        data_column_names = c("x","y"),
+        simulation_info_df = simulation_info_df_nm, 
+        list_radius_info = tm_radius_vary_nm_update, # diff
+        list_grouping_id = ordering_list_nm, # diff
+        verbose = verbose)
+      
+      # get pvalue ---
+      
+      suppressWarnings(
+        ptest_vary_nm_update <- uniform_multiple_check(conformal_df_vary_nm_update$containment_val))
+      # do chisq.test instead
+      p_storage_0 <- rbind(p_storage_0 ,
+                           ptest_vary_nm_update %>%
+                             dplyr::mutate(type = "vary_nm",
+                                           grouping_var = NA,
+                                           func_name = names(named_smooth_function_list)[f_idx],
+                                           n_sim = n_sim))
+    
+  }
   }
   
   
@@ -352,7 +363,7 @@ uniform_check_wrapper2 <- function(info_x,
   
   # objects to bring in ---------
   .export_string_into_function <- c("info_x", "sim_list", "sim_names", 
-                                    "info_x_test",
+                                    "info_x_test_list",
                                     "pseudo_density_df", "grouping_df_list", 
                                     "named_smooth_function_list","tdm_sim", 
                                     "mm_delta", "dist_between_array")
@@ -415,73 +426,79 @@ uniform_check_wrapper2 <- function(info_x,
                                                                                          g_order_ll = ordering_list)
                                               
                                               # calculate conformal scores ----
-                                              
-                                              conformal_df_fixed <- inner_containment_conformal_score_mode_radius(
-                                                df_row_group = info_x_test, # change
-                                                simulations_group_df = info_x, 
-                                                data_column_names = c("x","y"),
-                                                simulation_info_df = simulation_info_df, 
-                                                list_radius_info = tm_radius_fixed, # diff
-                                                list_grouping_id = ordering_list, # diff
-                                                verbose = verbose)
-                                              
-                                              conformal_df_vary <- inner_containment_conformal_score_mode_radius(
-                                                df_row_group = info_x_test,
-                                                simulations_group_df = info_x, 
-                                                data_column_names = c("x","y"),
-                                                simulation_info_df = simulation_info_df, 
-                                                list_radius_info = tm_radius_vary, # diff
-                                                list_grouping_id = ordering_list, # diff
-                                                verbose = verbose)
-                                              
-                                              # get pvalue ----
-                                              suppressWarnings(
-                                                ptest_fixed <- uniform_multiple_check(conformal_df_fixed$containment_val))
-                                              # do chisq.test instead
-                                              p_storage <- rbind(p_storage ,
-                                                                 ptest_fixed %>%
-                                                                     dplyr::mutate(type = "fixed",
-                                                                                   grouping_var = names(grouping_df_list)[g_idx],
-                                                                                   func_name = NA))
-                                              
-                                              suppressWarnings(
-                                                ptest_vary <- uniform_multiple_check(conformal_df_vary$containment_val))
-                                              # do chisq.test instead
-                                              p_storage <- rbind(p_storage ,
-                                                                 ptest_vary %>%
-                                                                   dplyr::mutate(type = "fixed",
-                                                                                 grouping_var = names(grouping_df_list)[g_idx],
-                                                                                 func_name = NA))
-                                              
-
-                                              
-                                              # then smoothings ---
-                                              for (f_idx in 1:n_func){ # for vary only
-                                                # update tm_matrix from above ----
-                                                tm_radius_vary_update <- update_tm_smooth(tm_radius_vary, 
-                                                                                          func = named_smooth_function_list[[f_idx]])
+                                              for (n_sim in 1:length(info_x_test_list)){
+                                                info_x_test <- info_x_test_list[[n_sim]]
                                                 
-                                                # calculate conformal scores ---
-                                                conformal_df_vary_update <- inner_containment_conformal_score_mode_radius(
+                                                conformal_df_fixed <- inner_containment_conformal_score_mode_radius(
+                                                  df_row_group = info_x_test, # change
+                                                  simulations_group_df = info_x, 
+                                                  data_column_names = c("x","y"),
+                                                  simulation_info_df = simulation_info_df, 
+                                                  list_radius_info = tm_radius_fixed, # diff
+                                                  list_grouping_id = ordering_list, # diff
+                                                  verbose = verbose)
+                                                
+                                                conformal_df_vary <- inner_containment_conformal_score_mode_radius(
                                                   df_row_group = info_x_test,
                                                   simulations_group_df = info_x, 
                                                   data_column_names = c("x","y"),
                                                   simulation_info_df = simulation_info_df, 
-                                                  list_radius_info = tm_radius_vary_update, # diff
+                                                  list_radius_info = tm_radius_vary, # diff
                                                   list_grouping_id = ordering_list, # diff
                                                   verbose = verbose)
                                                 
-                                                # get pvalue ---
+                                                # get pvalue ----
                                                 suppressWarnings(
-                                                  ptest_vary_update <- uniform_multiple_check(conformal_df_vary_update$containment_val))
+                                                  ptest_fixed <- uniform_multiple_check(conformal_df_fixed$containment_val))
                                                 # do chisq.test instead
                                                 p_storage <- rbind(p_storage ,
-                                                                   ptest_vary_update %>%
-                                                                     dplyr::mutate(type = "vary",
+                                                                   ptest_fixed %>%
+                                                                       dplyr::mutate(type = "fixed",
+                                                                                     grouping_var = names(grouping_df_list)[g_idx],
+                                                                                     func_name = NA,
+                                                                                     n_sim = n_sim))
+                                                
+                                                suppressWarnings(
+                                                  ptest_vary <- uniform_multiple_check(conformal_df_vary$containment_val))
+                                                # do chisq.test instead
+                                                p_storage <- rbind(p_storage ,
+                                                                   ptest_vary %>%
+                                                                     dplyr::mutate(type = "fixed",
                                                                                    grouping_var = names(grouping_df_list)[g_idx],
-                                                                                   func_name = names(named_smooth_function_list)[f_idx]))
+                                                                                   func_name = NA,
+                                                                                   n_sim = n_sim))
                                                 
+  
                                                 
+                                                # then smoothings ---
+                                                for (f_idx in 1:n_func){ # for vary only
+                                                  # update tm_matrix from above ----
+                                                  tm_radius_vary_update <- update_tm_smooth(tm_radius_vary, 
+                                                                                            func = named_smooth_function_list[[f_idx]])
+                                                  
+                                                  # calculate conformal scores ---
+                                                  conformal_df_vary_update <- inner_containment_conformal_score_mode_radius(
+                                                    df_row_group = info_x_test,
+                                                    simulations_group_df = info_x, 
+                                                    data_column_names = c("x","y"),
+                                                    simulation_info_df = simulation_info_df, 
+                                                    list_radius_info = tm_radius_vary_update, # diff
+                                                    list_grouping_id = ordering_list, # diff
+                                                    verbose = verbose)
+                                                  
+                                                  # get pvalue ---
+                                                  suppressWarnings(
+                                                    ptest_vary_update <- uniform_multiple_check(conformal_df_vary_update$containment_val))
+                                                  # do chisq.test instead
+                                                  p_storage <- rbind(p_storage ,
+                                                                     ptest_vary_update %>%
+                                                                       dplyr::mutate(type = "vary",
+                                                                                     grouping_var = names(grouping_df_list)[g_idx],
+                                                                                     func_name = names(named_smooth_function_list)[f_idx],
+                                                                                     n_sim = n_sim))
+                                                  
+                                                  
+                                                }
                                               }
                                               
                                               
@@ -498,7 +515,7 @@ uniform_check_wrapper2 <- function(info_x,
 # ^ uniform function *** *** ----------------
 
 
-# generate data ----------
+# GENERATE DATA ----------
 
 
 info_x <- data_generation(x_inner = x_value,
@@ -528,16 +545,23 @@ tdm_sims_compress_x <- dist_matrix_innersq_direction(compressed_info_x,
 
 
 # test info -----
-info_x_test <- data_generation(x_inner = x_value,
-                               n_sims_containment = n_simulations,
-                               number_points = number_points,
-                               verbose = T)
+compressed_info_x_test_list <- list()
+for (n_sims in 1:20){
+  print(paste("sim test: ", n_sims))
+  info_x_test <- data_generation(x_inner = x_value,
+                                 n_sims_containment = n_simulations,
+                                 number_points = number_points,
+                                 verbose = T)
+  
+  # creating compressed data
+  compressed_info_x_test <- info_x_test %>%
+    filament_compression(data_columns =
+                           c(1:ncol(info_x_test))[names(info_x_test) %in% c("x","y")],
+                         number_points = compression_size)
+  
+  compressed_info_x_test_list[[n_sims]] <- compressed_info_x_test
+}
 
-# creating compressed data
-compressed_info_x_test <- info_x_test %>%
-  filament_compression(data_columns =
-                         c(1:ncol(info_x_test))[names(info_x_test) %in% c("x","y")],
-                       number_points = compression_size)
 
 
 
@@ -576,6 +600,8 @@ uniform_info_list <- list()
 dist_between_array <- coverage_down_list_save(sim_list, e_cols = c("x","y"),
                         .e_cols_string = F, verbose = T)
 
+
+# START OF ANALYSIS -----------
 
 for (.sigma_string in range_sigma){
   
@@ -656,7 +682,7 @@ for (.sigma_string in range_sigma){
   uniform_info_df <- uniform_check_wrapper2(compressed_info_x,
                                     sim_list = sim_list,
                                     sim_names = sim_names, 
-                                    compressed_info_x_test,
+                                    compressed_info_x_test_list,
                                     pseudo_density_df = pd_df,
                                     grouping_df_list = group_info_list,
                                     named_smooth_function_list = smooth_function_list,
