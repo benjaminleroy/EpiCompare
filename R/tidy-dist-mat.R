@@ -89,11 +89,11 @@ check_tidy_dist_mat_dimensions <- function(dist_mat, rownames_df, colnames_df){
 #' @return either a error or \code{TRUE}
 check_tidy_dist_names_distinct <- function(rownames_df, colnames_df){
   rn_df_distinct <- dplyr::distinct(rownames_df)
-  assertthat::assert_that(all(rownames_df == rn_df_distinct),
+  assertthat::assert_that(assertthat::are_equal(rownames_df,rn_df_distinct),
                           msg = paste("rownames_df is not distinct",
                                       "(see dplyr::distinct) for help"))
   cn_df_distinct <- dplyr::distinct(colnames_df)
-  assertthat::assert_that(all(colnames_df == cn_df_distinct),
+  assertthat::assert_that(assertthat::are_equal(colnames_df, cn_df_distinct),
                           msg = paste("colnames_df is not distinct",
                                       "(see dplyr::distinct) for help"))
   
