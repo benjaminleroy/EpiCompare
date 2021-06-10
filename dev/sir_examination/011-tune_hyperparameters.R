@@ -463,7 +463,7 @@ uniform_check_wrapper2 <- function(info_x,
                                                 # do chisq.test instead
                                                 p_storage <- rbind(p_storage ,
                                                                    ptest_vary %>%
-                                                                     dplyr::mutate(type = "fixed",
+                                                                     dplyr::mutate(type = "vary",
                                                                                    grouping_var = names(grouping_df_list)[g_idx],
                                                                                    func_name = NA,
                                                                                    n_sim = n_sim))
