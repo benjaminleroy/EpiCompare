@@ -8,6 +8,7 @@ for mode clustering and changes of radius.}
 simulation_based_conformal4(
   truth_grouped_df,
   simulations_grouped_df,
+  smoothed_function,
   data_column_names = c("S", "I", "R"),
   number_points = Inf,
   .to_simplex = FALSE,
@@ -27,6 +28,9 @@ grouped_df) to be assessed.}
 
 \item{simulations_grouped_df}{grouped data frame with multiple simulated 
 filaments information}
+
+\item{smoothed_function}{a function for the smoothing approach for the varied
+approach}
 
 \item{data_column_names}{columns of \code{df_row_group} and 
 \code{simulations_group_df} that correspond to the output space.}

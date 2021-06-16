@@ -1203,6 +1203,8 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' grouped_df) to be assessed.
 #' @param simulations_grouped_df grouped data frame with multiple simulated 
 #' filaments information
+#' @param smoothed_function a function for the smoothing approach for the varied
+#' approach
 #' @param data_column_names columns of \code{df_row_group} and 
 #' \code{simulations_group_df} that correspond to the output space.
 #' @param number_points  the number of points the filament should be compressed 
@@ -1228,6 +1230,7 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' @return list of information...
 #' @export
 simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df,
+                                        smoothed_function,
                                         data_column_names = c("S", "I", "R"),
                                         number_points = Inf,
                                         .to_simplex = FALSE,
@@ -1282,14 +1285,10 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     data_column_names <- c("x","y")
   }
   
-  #truth_df_inner <- truth_df_inner %>%
-  #  mutate_at(vars(one_of(group_names_containment)), as.character)
   
   truth_df_non_group_idx <- which(
     names(truth_df_inner) %in% data_column_names)
-  
-  #simulations_group_df_inner <- simulations_group_df_inner %>%
-  #  mutate_at(vars(one_of(sim_group_names)), as.character)  # why is this done?
+
   
   simulations_group_df_non_group_idx <- which(
     names(simulations_group_df_inner) %in% data_column_names)
@@ -1387,6 +1386,12 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
   tm_radius_fixed <- inner_convert_single_radius_to_structure(mm_delta, 
                                                               ordering_list)
   
+  tm_radius_vary <- coverage_down_mlist(data_ll = sim_list,
+                                        e_cols = data_column_names,
+                                        g_order_ll =  ordering_list,
+                                        names_df = sim_names,
+                                        verbose = verbose)
+  
   # no mode clustering
   out_groups_nm <- sim_names %>% dplyr::mutate(groupings = 1)
   simulation_info_out_nm <- inner_expanding_info(pseudo_density_df, out_groups_nm)
@@ -1398,18 +1403,23 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                                                  ordering_list_nm)
   
     
-  tm_radius_vary <- coverage_down_mlist(data_ll = sim_list,
-                                       e_cols = data_column_names,
-                                       g_order_ll =  ordering_list,
-                                       names_df = sim_names,
-                                       verbose = verbose)
+
   
   tm_radius_vary_nm <- coverage_down_mlist(data_ll = sim_list,
                                            e_cols = data_column_names,
                                            g_order_ll =  ordering_list_nm,
                                            names_df = sim_names,
                                            verbose = verbose)
-    
+  
+  # smoothing varying approach
+  
+  tm_radius_vary_update <- update_tm_smooth(tm_radius_vary, 
+                   func = smoothed_function)
+  
+  tm_radius_vary_nm_update <- update_tm_smooth(tm_radius_vary_nm, 
+                                            func = smoothed_function)
+  
+  
   conformal_df_fixed <- inner_containment_conformal_score_mode_radius(
       df_row_group = truth_df_inner,
       simulations_group_df = simulations_group_df_inner, 
@@ -1445,12 +1455,32 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     list_radius_info = tm_radius_vary_nm, # diff
     list_grouping_id = ordering_list_nm, # diff
     verbose = verbose)
+  
+  conformal_df_vary_nm_smooth <- inner_containment_conformal_score_mode_radius(
+    df_row_group = truth_df_inner,
+    simulations_group_df = simulations_group_df_inner, 
+    data_column_names = data_column_names,
+    simulation_info_df = simulation_info_df_nm, # diff
+    list_radius_info = tm_radius_vary_nm_update, # diff
+    list_grouping_id = ordering_list_nm, # diff
+    verbose = verbose)
+  
+  conformal_df_vary_smooth <- inner_containment_conformal_score_mode_radius(
+    df_row_group = truth_df_inner,
+    simulations_group_df = simulations_group_df_inner, 
+    data_column_names = data_column_names,
+    simulation_info_df = simulation_info_df, # diff
+    list_radius_info = tm_radius_vary_update, # diff
+    list_grouping_id = ordering_list, # diff
+    verbose = verbose)
     
   if (return_min){
     return(list(conformal_score = list(fixed = conformal_df_fixed,
                                        fixed_nm = conformal_df_fixed_nm,
                                        vary = conformal_df_vary,
-                                       vary_nm = conformal_df_vary_nm), 
+                                       vary_nm = conformal_df_vary_nm,
+                                       smooth_vary = conformal_df_vary_smooth,
+                                       smooth_vary_nm = conformal_df_vary_nm_smooth), 
                 parameters = c("mm_delta_prop" = .2,
                                "mm_delta" = mm_delta,
                                "sigma_percentage" = percentage_inner,
@@ -1459,7 +1489,9 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     return(list(conformal_score = list(fixed = conformal_df_fixed,
                                        fixed_nm = conformal_df_fixed_nm,
                                        vary = conformal_df_vary,
-                                       vary_nm = conformal_df_vary_nm), 
+                                       vary_nm = conformal_df_vary_nm,
+                                       smooth_vary = conformal_df_vary_smooth,
+                                       smooth_vary_nm = conformal_df_vary_nm_smooth), 
                 containment_df = simulation_info_df,
                 mm_delta = mm_delta, 
                 tm_radius = list(fixed = tm_radius_fixed,
