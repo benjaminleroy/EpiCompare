@@ -43,6 +43,72 @@ load(paste0("data/selected_parameters_",
             n_simulations, "_", input_sigma_info_str,
             "_3.Rdata"))
 
+load(paste0("data/smoothing_parameters_",n_simulations,"_default_3.Rdata"))
+
+smooth_param_df <- smooth_parameters$df
+smooth_param_window <- smooth_parameters$window
+
+create_smooth_function <- function(df){
+   
+   eval(parse(text = paste0("smooth_function <- function(x,y){
+    tryCatch({
+      inner_ss <- smooth.spline(x,y, df = ",
+                            df,
+                            ")
+      return(predict(inner_ss,x)$y)},
+      error = function(cond){
+        message(sprintf(\"returning y: error in size of x (%i < 4)\", length(x)))
+        return(y)
+      },
+      warning = function(cond){
+        message(sprintf(paste(\"returning y: error in size of x\",
+                              \"relative to size of df (%i < %i)\"),
+                        length(x), ", df, "))
+        return(y)
+      }
+    )
+  }")))
+   
+   return(smooth_function)
+}
+
+inner_moving <- function(x, y, window = 5, fill_left = T,
+                         fun = min){
+   n <- length(y)
+   if (n < window){
+      message(sprintf(paste("returning y: error in size of x",
+                            "relative to size of window (%i < %i)"),
+                      n, window))
+      return(y)
+   }
+   
+   y_smooth <- rep(NA, n)
+   for (idx in window:n){
+      y_smooth[idx] <- fun(y[(idx-window+1):idx])
+   }
+   
+   if (fill_left){
+      y_smooth[1:(window-1)] <- y_smooth[window]
+   }
+   
+   return(y_smooth)
+}
+
+create_min_smooth_function <- function(window){
+   eval(parse(text = paste0("out_function <- function(x,y){
+    inner_moving(x,y, window = ", window,", fill_left = T, fun = min)
+  }")))
+   return(out_function)
+}
+
+function_names <- paste0(names(smooth_parameters), smooth_parameters)
+
+smoothing_function_df <- create_smooth_function(smooth_param_df)
+smoothing_function_window <- create_min_smooth_function(smooth_param_window)
+
+smoothing_functions <- list(smoothing_function_df, smoothing_function_window)
+names(smoothing_functions) <- function_names
+
 # test set conformal scores ------------------
 
 set.seed(123)
@@ -180,6 +246,7 @@ if (F){
 
 conformal_score <- simulation_based_conformal4(truth_grouped_df = truth_paths,
                                                simulations_grouped_df = sim_paths,
+                                               smoothed_functions = smoothing_functions,
                                                data_column_names = c("x", "y"),
                                                number_points = Inf,
                                                .to_simplex = F,

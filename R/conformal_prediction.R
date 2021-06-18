@@ -1203,8 +1203,8 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' grouped_df) to be assessed.
 #' @param simulations_grouped_df grouped data frame with multiple simulated 
 #' filaments information
-#' @param smoothed_function a function for the smoothing approach for the varied
-#' approach
+#' @param smoothed_functions a list of functions a function for the smoothing 
+#' approach for the varied approach
 #' @param data_column_names columns of \code{df_row_group} and 
 #' \code{simulations_group_df} that correspond to the output space.
 #' @param number_points  the number of points the filament should be compressed 
@@ -1230,7 +1230,7 @@ simulation_based_conformal3.5 <- function(truth_grouped_df, simulations_grouped_
 #' @return list of information...
 #' @export
 simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df,
-                                        smoothed_function,
+                                        smoothed_functions,
                                         data_column_names = c("S", "I", "R"),
                                         number_points = Inf,
                                         .to_simplex = FALSE,
@@ -1412,12 +1412,16 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                            verbose = verbose)
   
   # smoothing varying approach
-  
-  tm_radius_vary_update <- update_tm_smooth(tm_radius_vary, 
-                   func = smoothed_function)
-  
-  tm_radius_vary_nm_update <- update_tm_smooth(tm_radius_vary_nm, 
-                                            func = smoothed_function)
+  tm_radius_vary_update_list <- list()
+  tm_radius_vary_nm_update_list <- list()
+  for (f_name in names(smoothing_functions)){
+    tm_radius_vary_update_list[[f_name]] <- update_tm_smooth(tm_radius_vary, 
+                                              func = smoothed_functions[[f_name]])
+    
+    tm_radius_vary_nm_update_list[[f_name]] <- update_tm_smooth(tm_radius_vary_nm, 
+                                                 func = smoothed_functions[[f_name]])
+  }
+
   
   
   conformal_df_fixed <- inner_containment_conformal_score_mode_radius(
@@ -1456,31 +1460,36 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
     list_grouping_id = ordering_list_nm, # diff
     verbose = verbose)
   
-  conformal_df_vary_nm_smooth <- inner_containment_conformal_score_mode_radius(
-    df_row_group = truth_df_inner,
-    simulations_group_df = simulations_group_df_inner, 
-    data_column_names = data_column_names,
-    simulation_info_df = simulation_info_df_nm, # diff
-    list_radius_info = tm_radius_vary_nm_update, # diff
-    list_grouping_id = ordering_list_nm, # diff
-    verbose = verbose)
   
-  conformal_df_vary_smooth <- inner_containment_conformal_score_mode_radius(
-    df_row_group = truth_df_inner,
-    simulations_group_df = simulations_group_df_inner, 
-    data_column_names = data_column_names,
-    simulation_info_df = simulation_info_df, # diff
-    list_radius_info = tm_radius_vary_update, # diff
-    list_grouping_id = ordering_list, # diff
-    verbose = verbose)
+  conformal_df_vary_nm_smooth_list <- list()
+  conformal_df_vary_smooth_list <- list()
+  for (f_name in names(smoothing_functions)){
+    conformal_df_vary_nm_smooth_list[[f_name]] <- inner_containment_conformal_score_mode_radius(
+      df_row_group = truth_df_inner,
+      simulations_group_df = simulations_group_df_inner, 
+      data_column_names = data_column_names,
+      simulation_info_df = simulation_info_df_nm, # diff
+      list_radius_info = tm_radius_vary_nm_update_list[[f_name]], # diff
+      list_grouping_id = ordering_list_nm, # diff
+      verbose = verbose)
+    
+    conformal_df_vary_smooth_list[[f_name]] <- inner_containment_conformal_score_mode_radius(
+      df_row_group = truth_df_inner,
+      simulations_group_df = simulations_group_df_inner, 
+      data_column_names = data_column_names,
+      simulation_info_df = simulation_info_df, # diff
+      list_radius_info = tm_radius_vary_update_list[[f_name]], # diff
+      list_grouping_id = ordering_list, # diff
+      verbose = verbose)
+  }
     
   if (return_min){
     return(list(conformal_score = list(fixed = conformal_df_fixed,
                                        fixed_nm = conformal_df_fixed_nm,
                                        vary = conformal_df_vary,
                                        vary_nm = conformal_df_vary_nm,
-                                       smooth_vary = conformal_df_vary_smooth,
-                                       smooth_vary_nm = conformal_df_vary_nm_smooth), 
+                                       smooth_vary = conformal_df_vary_smooth_list,
+                                       smooth_vary_nm = conformal_df_vary_nm_smooth_list), 
                 parameters = c("mm_delta_prop" = .2,
                                "mm_delta" = mm_delta,
                                "sigma_percentage" = percentage_inner,
@@ -1490,14 +1499,16 @@ simulation_based_conformal4 <- function(truth_grouped_df, simulations_grouped_df
                                        fixed_nm = conformal_df_fixed_nm,
                                        vary = conformal_df_vary,
                                        vary_nm = conformal_df_vary_nm,
-                                       smooth_vary = conformal_df_vary_smooth,
-                                       smooth_vary_nm = conformal_df_vary_nm_smooth), 
+                                       smooth_vary = conformal_df_vary_smooth_list,
+                                       smooth_vary_nm = conformal_df_vary_nm_smooth_list), 
                 containment_df = simulation_info_df,
                 mm_delta = mm_delta, 
                 tm_radius = list(fixed = tm_radius_fixed,
                                  fixed_nm = tm_radius_fixed_nm,
                                  vary = tm_radius_vary,
-                                 vary_nm = tm_radius_vary_nm),
+                                 vary_nm = tm_radius_vary_nm,
+                                 smooth_vary = tm_radius_vary_update_list,
+                                 smooth_vary_nm = tm_radius_vary_nm_update_list),
                 truth_df_inner = truth_df_inner,
                 simulations_group_df_inner = simulations_group_df_inner,
                 ordering_list = ordering_list,
