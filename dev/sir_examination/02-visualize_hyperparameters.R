@@ -35,7 +35,7 @@ for (x_value in c(0,.64,.85)){
   # load in data
   
   x_storage_value <- x_storage_values[as.character(x_value)]
-  saved_out <- load(file = paste0("data/sigma_info_x",x_storage_value*100,"_",
+  saved_out <- load(file = paste0("data/tuning_info_x",x_storage_value*100,"_",
                                   num_sims, "_", input_sigma_info_str,
                                   "_3.Rdata"))
   eval(parse(text = paste("sigma_info_list_x <-", saved_out[1])))
@@ -61,7 +61,18 @@ for (x_value in c(0,.64,.85)){
          fill = paste0("correct num\nclusters: ", expected_number_clusters_inner))  +
     facet_wrap(~.sigma_string)
   
-  path_vis_list[[as.character(x_value)]] <- ggvis_curves
+  
+  data2d <- data.frame(x = c(1,0,0,1),
+                       y = c(0,1,0,0),
+                       z = c(0,0,1,0)) %>% 
+    EpiCompare::get_xy_coord(xyz_col = c("x","y", "z"))
+  
+  path_vis_list[[as.character(x_value)]] <- ggvis_curves$data %>% 
+    ggplot() +
+    geom_path(aes(x = x, y = y, group = idx), alpha = 20/num_sims) +
+    geom_path(data = data2d, aes(x=x,y=y), color = "black") +
+    theme_minimal() +
+    labs(x="", y="", title = paste0("X val: ", x_value, "\nnum sims: ", num_sims))
 }
 
 
@@ -119,8 +130,10 @@ vis_combo <- data_combo %>%
        subtitle = "(sum across X values, NA = False)",
        fill = "# of correct modes")  +
   facet_wrap(~.sigma_string) +
-  scale_fill_manual(values = c("grey70",
-                               '#fee8c8','#fdbb84','#e34a33')) +
+  scale_fill_manual(values = c("0"="grey70",
+                               "1" = '#fee8c8',
+                               "2" = '#fdbb84',
+                               "3" = '#e34a33')) +
   theme(legend.position = "bottom")
 
 ggsave(vis_combo, filename = paste0("data/vis_combo_",num_sims,"_", 

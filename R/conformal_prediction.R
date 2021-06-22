@@ -516,7 +516,7 @@ inner_expanding_info <- function(psuedo_density_df, mode_grouping){
 }
 
 
-#' Helper fucntion for simulation-based conformal score calculation based 
+#' Helper function for simulation-based conformal score calculation based 
 #' potentially based on mode clustering and changing radius values.
 #'
 #' @param df_row_group data frame with filaments information (can be a 

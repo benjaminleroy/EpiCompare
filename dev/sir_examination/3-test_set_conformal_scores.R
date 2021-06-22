@@ -1,4 +1,4 @@
-# run: Rscript 3-test_set_conformal_scores.R [1-101] 1000 T
+# run: Rscript 3-test_set_conformal_scores.R [1-101] 1000 T "default"
 # expected run time 1.6 hours (shoot for 2:30)
 
 input_args <- commandArgs(trailingOnly=TRUE)
@@ -38,12 +38,14 @@ if (user_name == "benjaminleroy"){ # personal computer
 }
 
 # hyperparameter load -----------
-input_sigma_info_str <- "default"
+input_sigma_info_str <- input_args[4] #"default"
+
 load(paste0("data/selected_parameters_", 
-            n_simulations, "_", input_sigma_info_str,
+            n_simulations, "_", "default",
             "_3.Rdata"))
 
-load(paste0("data/smoothing_parameters_",n_simulations,"_default_3.Rdata"))
+load(paste0("data/smoothing_parameters_",n_simulations,"_",input_sigma_info_str,"_3.Rdata"))
+
 
 smooth_param_df <- smooth_parameters$df
 smooth_param_window <- smooth_parameters$window

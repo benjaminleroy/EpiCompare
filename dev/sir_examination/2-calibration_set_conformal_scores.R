@@ -1,14 +1,14 @@
-# run: Rscript 2-calibration_set_conformal_score.R [1-300] 1000
+# run: Rscript 2-calibration_set_conformal_score.R [1-300] 1000 default (10-40-5) 
 # expected run time: 2 hours (shoot for 2:30)
 
 # input parameters -----------------------------
-input_args <- as.numeric(commandArgs(trailingOnly=TRUE))
-calibration_idx <- input_args[1]
+input_args <- commandArgs(trailingOnly=TRUE)
+calibration_idx <- as.numeric(input_args[1])
 
 #calibration_idx <- 1
 
 # initial global parameters --------------------
-n_simulations <- input_args[2] #1000
+n_simulations <- as.numeric(input_args[2]) #1000
 number_points <- 150
 
 # library loading -------------------------
@@ -33,12 +33,13 @@ if (user_name == "benjaminleroy"){ # personal computer
 
 
 # hyperparameter load -----------
-input_sigma_info_str <- "default"
+input_sigma_info_str <- input_args[3] #"default"
+
 load(paste0("data/selected_parameters_", 
-            n_simulations, "_", input_sigma_info_str,
+            n_simulations, "_", "default",
             "_3.Rdata"))
 
-load(paste0("data/smoothing_parameters_",n_simulations,"_default_3.Rdata"))
+load(paste0("data/smoothing_parameters_",n_simulations,"_",input_sigma_info_str,"_3.Rdata"))
 
 smooth_param_df <- smooth_parameters$df
 smooth_param_window <- smooth_parameters$window
