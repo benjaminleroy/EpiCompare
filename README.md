@@ -1,4 +1,4 @@
-
+ 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 # EpiCompare <a href = "https://skgallagher.github.io/EpiCompare/"><img src="man/figures/logo.png" align="right" alt="EpiCompare" width="120" /></a>
