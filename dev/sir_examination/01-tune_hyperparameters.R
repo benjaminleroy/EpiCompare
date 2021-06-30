@@ -159,14 +159,14 @@ for (.sigma_string in range_sigma){
   # 1. calculate all grouping structures
   # 2.
   
-  uniform_check_wrapper <- function(compressed_info_x,
-                        compressed_info_x_test,
-                        grouping_list,
-                        pd_df = pdf_df,
-                        group_df = ){
-    # needs to 
-    # 1. 
-  }
+  # uniform_check_wrapper <- function(compressed_info_x,
+  #                       compressed_info_x_test,
+  #                       grouping_list,
+  #                       pd_df = pdf_df,
+  #                       group_df = ){
+  #   # needs to 
+  #   # 1. 
+  # }
   
   
   
